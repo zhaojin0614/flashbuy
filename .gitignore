@@ -1,0 +1,7 @@
+target/
+.idea/
+*.iml
+.vscode/
+nginx-1.18.0/logs/
+nginx-1.18.0/temp/
+*.log
