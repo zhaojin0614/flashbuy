@@ -15,4 +15,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     Result seckillVoucher(Long voucherId);
+
+    /**
+     * 落库创建订单（@Transactional 生效需要走代理调用）
+     */
+    void createVoucherOrder(VoucherOrder voucherOrder);
 }

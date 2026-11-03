@@ -12,6 +12,7 @@ import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -22,6 +23,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -57,6 +59,15 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    /**
+     * 自注入代理：消费线程不是代理调用上下文，AopContext.currentProxy() 在这里拿不到代理，
+     * 只能靠自注入拿到 IVoucherOrderService 的代理对象，@Transactional 才能生效。
+     * @Lazy 延迟到首次调用时再解析，避免 Bean 自我注入的初始化顺序问题
+     */
+    @Lazy
+    @Resource
+    private IVoucherOrderService proxy;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -113,8 +124,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     MapRecord<String, Object, Object> record = list.get(0);
                     Map<Object, Object> value = record.getValue();
                     VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(), true);
-                    // 3.创建订单
-                    createVoucherOrder(voucherOrder);
+                    // 3.处理订单（锁 + 事务 + 落库）
+                    handleVoucherOrder(voucherOrder);
                     // 4.确认消息 XACK
                     stringRedisTemplate.opsForStream().acknowledge("stream.orders", "g1", record.getId());
                 } catch (Exception e) {
@@ -145,8 +156,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     MapRecord<String, Object, Object> record = list.get(0);
                     Map<Object, Object> value = record.getValue();
                     VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(), true);
-                    // 3.创建订单
-                    createVoucherOrder(voucherOrder);
+                    // 3.处理订单（锁 + 事务 + 落库）
+                    handleVoucherOrder(voucherOrder);
                     // 4.确认消息 XACK
                     stringRedisTemplate.opsForStream().acknowledge("stream.orders", "g1", record.getId());
                 } catch (Exception e) {
@@ -159,9 +170,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
-    private void createVoucherOrder(VoucherOrder voucherOrder) {
+    /**
+     * 消费入口：分布式锁包住整个事务调用（锁在事务外层）。
+     * proxy 调用返回即代表事务已提交，之后才走到 unlock，
+     * 消除了"释放锁后、事务尚未提交"期间其他线程读到旧数据的并发缝隙。
+     */
+    private void handleVoucherOrder(VoucherOrder voucherOrder) {
         Long userId = voucherOrder.getUserId();
-        Long voucherId = voucherOrder.getVoucherId();
         // 创建锁对象
         RLock redisLock = redissonClient.getLock("lock:order:" + userId);
         // 尝试获取锁
@@ -174,32 +189,46 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
         try {
-            // 5.1.查询订单
-            int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
-            // 5.2.判断是否存在
-            if (count > 0) {
-                // 用户已经购买过了
-                log.error("不允许重复下单！");
-                return;
-            }
-
-            // 6.扣减库存
-            boolean success = seckillVoucherService.update()
-                    .setSql("stock = stock - 1")
-                    .eq("voucher_id", voucherId).gt("stock", 0)
-                    .update();
-            if (!success) {
-                // 扣减失败
-                log.error("库存不足！");
-                return;
-            }
-
-            // 7.创建订单
-            save(voucherOrder);
+            // 关键：走代理调用，@Transactional 才会生效，不能写 this.createVoucherOrder(...)
+            proxy.createVoucherOrder(voucherOrder);
         } finally {
             // 释放锁
             redisLock.unlock();
         }
+    }
+
+    /**
+     * 只做数据库操作：count 校验 + 扣库存 + 建订单，由 @Transactional 保证原子性。
+     * 注意：必须是 public，Spring 事务基于代理实现，private 方法上事务不生效。
+     */
+    @Transactional
+    @Override
+    public void createVoucherOrder(VoucherOrder voucherOrder) {
+        Long userId = voucherOrder.getUserId();
+        Long voucherId = voucherOrder.getVoucherId();
+
+        // 5.一人一单第三道防线：数据库 count 校验（第一道 Lua 的 Set 判断、第二道 Redisson 锁）
+        int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+        // 判断是否存在
+        if (count > 0) {
+            // 用户已经购买过了
+            log.error("不允许重复下单！");
+            return;
+        }
+
+        // 6.乐观锁扣减库存（防超卖兜底）
+        boolean success = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", voucherId).gt("stock", 0)
+                .update();
+        if (!success) {
+            // 扣减失败
+            log.error("库存不足！");
+            return;
+        }
+
+        // 7.创建订单
+        save(voucherOrder);
     }
 
     @Override
