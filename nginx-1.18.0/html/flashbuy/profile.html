@@ -35,7 +35,7 @@
     async function loadProfile() {
       try {
         const r = await axios.get('/user/me');
-        document.getElementById('nick').textContent = r.data.nick || '闪友';
+        document.getElementById('nick').textContent = r.data.nickName || r.data.nick || '闪友';
         document.getElementById('avatar').src = r.data.icon || '/imgs/icons/user.png';
         const phone = sessionStorage.getItem('token') && r.data.phone || '';
         document.getElementById('phone').textContent = phone ? '手机号：' + phone : '';

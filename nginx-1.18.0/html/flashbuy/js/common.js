@@ -2,6 +2,9 @@
 axios.defaults.baseURL = '/api';
 axios.defaults.timeout = 5000;
 
+// 防御：历史遗留的坏 token（如字符串 "undefined"）自动清除
+if (sessionStorage.getItem('token') === 'undefined') sessionStorage.removeItem('token');
+
 // 请求拦截：携带 token
 axios.interceptors.request.use(config => {
   const token = sessionStorage.getItem('token');
@@ -15,7 +18,10 @@ axios.interceptors.response.use(response => {
   return response.data;
 }, error => {
   if (error.response && error.response.status === 401) {
-    setTimeout(() => location.href = '/login.html', 300);
+    // 已在登录页时不再跳转，避免登录过程中的 401 造成死循环
+    if (location.pathname.indexOf('login.html') === -1) {
+      setTimeout(() => location.href = '/login.html', 300);
+    }
     return Promise.reject('请先登录');
   }
   return Promise.reject('网络异常，请稍后重试');
@@ -49,7 +55,7 @@ async function loadMe() {
   if (!isLoggedIn()) return;
   try {
     const r = await axios.get('/user/me');
-    sessionStorage.setItem('nick', r.data.nick || '我');
+    sessionStorage.setItem('nick', r.data.nickName || r.data.nick || '我');
     sessionStorage.setItem('avatar', r.data.icon || '/imgs/icons/user.png');
   } catch (e) { /* 静默 */ }
 }

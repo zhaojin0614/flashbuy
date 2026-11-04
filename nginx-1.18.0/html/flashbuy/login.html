@@ -54,10 +54,11 @@
       if (!code) return toast('请输入验证码', 'error');
       try {
         const r = await axios.post('/user/login', { phone, code });
-        sessionStorage.setItem('token', r.data.token);
+        // 登录接口的 data 就是 token 字符串本身
+        sessionStorage.setItem('token', r.data);
         try {
           const me = await axios.get('/user/me');
-          sessionStorage.setItem('nick', me.data.nick || '我');
+          sessionStorage.setItem('nick', me.data.nickName || me.data.nick || '我');
           sessionStorage.setItem('avatar', me.data.icon || '/imgs/icons/user.png');
         } catch (e) { /* 忽略 */ }
         toast('登录成功', 'success');
