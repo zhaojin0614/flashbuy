@@ -20,4 +20,11 @@ public interface IOrderService extends IService<Order> {
      * 落库创建订单（@Transactional 生效需要走代理调用）
      */
     void createOrder(Order order);
+
+    /**
+     * 查询当前用户对某商品的抢购状态：
+     * qualified = 已获得抢购资格（Lua 阶段同步写入 Redis Set，秒级即时）
+     * ordered   = 订单已异步落库（DB）
+     */
+    Result orderState(Long productId);
 }

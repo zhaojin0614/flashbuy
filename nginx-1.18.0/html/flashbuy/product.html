@@ -44,19 +44,46 @@
     }
     async function buy() {
       if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
+      if (product.type !== 1) { toast('常规商品暂不支持线上下单（演示环境）', 'error'); return; }
       const btn = document.getElementById('buyBtn');
       btn.disabled = true; btn.textContent = '抢购中…';
       try {
         const r = await axios.post('/order/seckill/' + productId);
-        btn.textContent = '抢购成功 ✓';
+        btn.textContent = '⏳ 订单创建中…';
         toast('抢购成功！订单号 ' + r.data + '，订单正在异步创建', 'success');
+        pollCount = 0;
+        setTimeout(loadState, 2000);
       } catch (e) {
         btn.disabled = false;
-        btn.textContent = product.type === 1 ? '⚡ 立即抢购' : '立即购买';
+        btn.textContent = '⚡ 立即抢购';
         toast(typeof e === 'string' ? e : '抢购失败', 'error');
       }
     }
-    loadProduct();
+    // 抢购状态：ordered=已落库 / qualified=已占资格（异步落库中）/ 都没有=可抢
+    let pollCount = 0;
+    async function loadState() {
+      if (!isLoggedIn()) return;
+      try {
+        const r = await axios.get('/order/state/' + productId);
+        updateBuyBtn(r.data);
+      } catch (e) { /* 静默，保持默认按钮 */ }
+    }
+    function updateBuyBtn(state) {
+      const btn = document.getElementById('buyBtn');
+      if (!btn || !product) return;
+      if (state.ordered) {
+        btn.disabled = true;
+        btn.textContent = '✓ 已抢到 · 订单创建成功';
+      } else if (state.qualified) {
+        btn.disabled = true;
+        btn.textContent = pollCount < 8 ? '⏳ 订单创建中…' : '⏳ 订单处理中，请稍后刷新';
+        if (pollCount++ < 8) setTimeout(loadState, 2000);
+      } else {
+        btn.disabled = false;
+        btn.textContent = product.type === 1 ? '⚡ 立即抢购' : '立即购买';
+      }
+    }
+    loadProduct().then(loadState);
   </script>
 </body>
 </html>

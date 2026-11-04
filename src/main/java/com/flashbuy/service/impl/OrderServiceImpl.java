@@ -7,6 +7,7 @@ import com.flashbuy.entity.Order;
 import com.flashbuy.mapper.OrderMapper;
 import com.flashbuy.service.IProductReleaseService;
 import com.flashbuy.service.IOrderService;
+import com.flashbuy.utils.RedisConstants;
 import com.flashbuy.utils.RedisIdWorker;
 import com.flashbuy.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ import jakarta.annotation.Resource;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -229,6 +231,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
         // 7.创建订单
         save(order);
+    }
+
+    @Override
+    public Result orderState(Long productId) {
+        Long userId = UserHolder.getUser().getId();
+        // 1.抢购资格：Lua 阶段同步写入的 Redis Set（资格判断、预扣库存、发消息三合一）
+        boolean qualified = Boolean.TRUE.equals(stringRedisTemplate.opsForSet()
+                .isMember(RedisConstants.SECKILL_ORDER_KEY + productId, userId.toString()));
+        // 2.订单是否已异步落库
+        long ordered = query().eq("user_id", userId).eq("product_id", productId).count();
+        Map<String, Object> state = new HashMap<>();
+        state.put("qualified", qualified);
+        state.put("ordered", ordered > 0);
+        return Result.ok(state);
     }
 
     @Override
