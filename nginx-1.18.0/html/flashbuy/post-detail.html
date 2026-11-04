@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>晒单详情 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .d-author { display: flex; align-items: center; gap: 10px; padding: 16px; }
+    .d-author img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
+    .d-author .name { font-weight: 700; font-size: 15px; }
+    .d-author .time { font-size: 12px; color: var(--text-sub); }
+    .d-title { font-size: 20px; font-weight: 800; padding: 0 16px; margin-bottom: 10px; }
+    .d-imgs { padding: 0 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .d-imgs img { width: calc(50% - 4px); border-radius: 10px; object-fit: cover; max-height: 240px; }
+    .d-content { padding: 14px 16px 18px; font-size: 15px; line-height: 1.9; white-space: pre-line; }
+    .d-foot { display: flex; align-items: center; gap: 22px; padding: 0 16px 18px; }
+    .comment-box { display: flex; gap: 10px; padding: 14px; position: sticky; bottom: 12px; }
+    .comment-box input { flex: 1; height: 42px; border: 1.5px solid #e4e0f3; border-radius: 999px; padding: 0 16px; font-size: 14px; outline: none; }
+    .comment-box input:focus { border-color: var(--primary); }
+    .comment-item { display: flex; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #f1eef9; }
+    .comment-item img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+    .comment-item .c-name { font-size: 13px; font-weight: 600; }
+    .comment-item .c-content { font-size: 14px; margin-top: 3px; }
+    .comment-item .c-time { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+    .back-link { font-size: 14px; color: var(--text-sub); cursor: pointer; }
+    .back-link:hover { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div style="margin-top:18px"><span class="back-link" onclick="history.back()">← 返回晒单列表</span></div>
+    <div id="postWrap" style="margin-top:12px"></div>
+    <div class="section-title" id="cTitle">评论（0）</div>
+    <div id="commentList"></div>
+    <div style="text-align:center;margin:6px 0 16px">
+      <button class="btn btn-ghost" id="moreC" onclick="loadComments()">加载更多评论</button>
+    </div>
+    <div class="card comment-box" id="cBox">
+      <input id="cInput" type="text" maxlength="200" placeholder="发表你的评论…" onkeydown="if(event.key==='Enter')sendComment()">
+      <button class="btn" onclick="sendComment()">发送</button>
+    </div>
+    <div style="height:20px"></div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('post');
+    loadMe();
+    const postId = new URLSearchParams(location.search).get('id');
+    let cPage = 1;
+    async function loadPost() {
+      try {
+        const r = await axios.get('/post/' + postId);
+        const p = r.data;
+        document.title = (p.title || '晒单详情') + ' - 闪购 FlashBuy';
+        document.getElementById('postWrap').innerHTML = `
+          <div class="card">
+            <div class="d-author">
+              <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+              <div>
+                <div class="name">${p.name || '闪友'}</div>
+                <div class="time">${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+              </div>
+              <button class="like-btn ${p.isLike ? 'liked' : ''}" style="margin-left:auto;font-size:15px"
+                      id="likeBtn" onclick="toggleLike()">${p.isLike ? '❤' : '🤍'} <span>${p.liked || 0}</span></button>
+            </div>
+            <div class="d-title">${p.title || ''}</div>
+            <div class="d-imgs">${(p.images || '').split(',').filter(Boolean)
+                .map(src => `<img src="${src}" alt="" onerror="this.style.display='none'">`).join('')}</div>
+            <div class="d-content">${p.content || ''}</div>
+            <div class="d-foot">
+              <span class="sub">💬 ${(p.comments || 0)} 条评论</span>
+              <span class="sub" onclick="location.href='/merchant.html?id=${p.merchantId || ''}'"
+                    style="cursor:pointer">🏬 查看相关商户</span>
+            </div>
+          </div>`;
+        document.getElementById('cTitle').textContent = `评论（${p.comments || 0}）`;
+      } catch (e) {
+        document.getElementById('postWrap').innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+    async function toggleLike() {
+      if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
+      try {
+        await axios.put('/post/like/' + postId);
+        const btn = document.getElementById('likeBtn');
+        const liked = btn.classList.toggle('liked');
+        const num = btn.querySelector('span');
+        num.textContent = +num.textContent + (liked ? 1 : -1);
+        btn.firstChild.textContent = liked ? '❤ ' : '🤍 ';
+      } catch (e) { toast(e, 'error'); }
+    }
+    async function loadComments() {
+      try {
+        const r = await axios.get('/post-comments/of/' + postId, { params: { current: cPage } });
+        const list = document.getElementById('commentList');
+        if (cPage === 1) list.innerHTML = '';
+        if (!r.data.length) {
+          document.getElementById('moreC').textContent = cPage === 1 ? '还没有评论，来抢沙发' : '没有更多了';
+          document.getElementById('moreC').disabled = true;
+          return;
+        }
+        r.data.forEach(c => {
+          const el = document.createElement('div');
+          el.className = 'comment-item';
+          el.innerHTML = `
+            <img src="${c.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+            <div>
+              <div class="c-name">${c.name || '闪友'}</div>
+              <div class="c-content">${c.content || ''}</div>
+              <div class="c-time">${(c.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+            </div>`;
+          list.appendChild(el);
+        });
+        cPage++;
+      } catch (e) {
+        document.getElementById('commentList').innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+    async function sendComment() {
+      if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
+      const input = document.getElementById('cInput');
+      const content = input.value.trim();
+      if (!content) return toast('评论内容不能为空', 'error');
+      try {
+        await axios.post('/post-comments', { postId: postId, content: content });
+        input.value = '';
+        toast('评论成功', 'success');
+        cPage = 1;
+        loadComments();
+        loadPost();  // 刷新评论计数
+      } catch (e) { toast(e, 'error'); }
+    }
+    loadPost();
+    loadComments();
+  </script>
+</body>
+</html>

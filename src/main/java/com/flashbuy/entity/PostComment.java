@@ -1,6 +1,7 @@
 package com.flashbuy.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -56,6 +57,18 @@ public class PostComment implements Serializable {
      * 回复的内容
      */
     private String content;
+
+    /**
+     * 用户昵称（联查展示字段，非数据库列）
+     */
+    @TableField(exist = false)
+    private String name;
+
+    /**
+     * 用户头像（联查展示字段，非数据库列）
+     */
+    @TableField(exist = false)
+    private String icon;
 
     /**
      * 点赞数

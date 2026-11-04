@@ -4,8 +4,12 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.flashbuy.dto.Result;
 import com.flashbuy.entity.Order;
+import com.flashbuy.entity.Merchant;
+import com.flashbuy.entity.Product;
 import com.flashbuy.mapper.OrderMapper;
+import com.flashbuy.service.IMerchantService;
 import com.flashbuy.service.IProductReleaseService;
+import com.flashbuy.service.IProductService;
 import com.flashbuy.service.IOrderService;
 import com.flashbuy.utils.RedisConstants;
 import com.flashbuy.utils.RedisIdWorker;
@@ -37,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 /**
  * <p>
@@ -52,6 +57,12 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
     @Resource
     private IProductReleaseService seckillProductService;
+
+    @Resource
+    private IProductService productService;
+
+    @Resource
+    private IMerchantService merchantService;
 
     @Resource
     private RedisIdWorker redisIdWorker;
@@ -245,6 +256,41 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         state.put("qualified", qualified);
         state.put("ordered", ordered > 0);
         return Result.ok(state);
+    }
+
+    @Override
+    public Result queryMyOrders() {
+        Long userId = UserHolder.getUser().getId();
+        // 1.查询我的订单（新订单在前）
+        List<Order> orders = query().eq("user_id", userId).orderByDesc("create_time").list();
+        if (orders.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        // 2.批量查询商品与商户，组装展示信息（两段查询避免联表）
+        List<Long> productIds = orders.stream().map(Order::getProductId).collect(Collectors.toList());
+        Map<Long, Product> productMap = productService.listByIds(productIds).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+        List<Long> merchantIds = productMap.values().stream()
+                .map(Product::getMerchantId).distinct().collect(Collectors.toList());
+        Map<Long, Merchant> merchantMap = merchantIds.isEmpty() ? Map.of()
+                : merchantService.listByIds(merchantIds).stream()
+                        .collect(Collectors.toMap(Merchant::getId, m -> m));
+        List<Map<String, Object>> result = orders.stream().map(o -> {
+            Map<String, Object> vo = new HashMap<>();
+            vo.put("orderId", o.getId());
+            vo.put("productId", o.getProductId());
+            Product p = productMap.get(o.getProductId());
+            if (p != null) {
+                vo.put("title", p.getTitle());
+                vo.put("payValue", p.getPayValue());
+                Merchant m = merchantMap.get(p.getMerchantId());
+                vo.put("merchantName", m != null ? m.getName() : "");
+            }
+            vo.put("createTime", o.getCreateTime());
+            vo.put("status", o.getStatus() == null ? 0 : o.getStatus());
+            return vo;
+        }).collect(Collectors.toList());
+        return Result.ok(result);
     }
 
     @Override

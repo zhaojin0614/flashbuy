@@ -27,4 +27,9 @@ public interface IOrderService extends IService<Order> {
      * ordered   = 订单已异步落库（DB）
      */
     Result orderState(Long productId);
+
+    /**
+     * 我的订单列表（带商品标题、商户名、金额，新订单在前）
+     */
+    Result queryMyOrders();
 }

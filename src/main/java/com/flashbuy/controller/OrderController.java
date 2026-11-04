@@ -36,4 +36,12 @@ public class OrderController {
     public Result orderState(@PathVariable("id") Long productId) {
         return orderService.orderState(productId);
     }
+
+    /**
+     * 我的订单列表（带商品标题、商户名、金额，新订单在前）
+     */
+    @GetMapping("of/me")
+    public Result queryMyOrders() {
+        return orderService.queryMyOrders();
+    }
 }

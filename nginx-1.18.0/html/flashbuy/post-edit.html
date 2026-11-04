@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>发布晒单 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .edit-card { margin-top: 20px; padding: 26px; }
+    .edit-card h1 { font-size: 22px; font-weight: 800; margin-bottom: 18px; }
+    .edit-card textarea { width: 100%; min-height: 180px; border: 1.5px solid #e4e0f3; border-radius: 12px; padding: 14px; font-size: 15px; line-height: 1.8; outline: none; resize: vertical; font-family: inherit; }
+    .edit-card textarea:focus { border-color: var(--primary); }
+    .img-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+    .img-item { position: relative; width: 96px; height: 96px; border-radius: 10px; overflow: hidden; }
+    .img-item img { width: 100%; height: 100%; object-fit: cover; }
+    .img-item .del {
+      position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 20px;
+      text-align: center; cursor: pointer;
+    }
+    .upload-cell {
+      width: 96px; height: 96px; border-radius: 10px; border: 1.5px dashed #c9c2ec;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: var(--text-sub); font-size: 12px; cursor: pointer; gap: 4px;
+    }
+    .upload-cell:hover { border-color: var(--primary); color: var(--primary); }
+    .upload-cell b { font-size: 24px; font-weight: 400; }
+    .edit-foot { display: flex; gap: 12px; margin-top: 20px; }
+    .hint { font-size: 12px; color: var(--text-sub); margin-top: 10px; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="card edit-card">
+      <h1>✏️ 发布晒单</h1>
+      <div class="field">
+        <label>晒单图片（最多 9 张，可跳过）</label>
+        <div class="img-grid" id="imgGrid">
+          <label class="upload-cell" id="upBtn"><b>＋</b>上传图片<input id="fileInput" type="file" accept="image/*" multiple hidden onchange="upload(this.files)"></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>标题</label>
+        <input id="title" type="text" maxlength="42" placeholder="一句话概括这次抢购体验">
+      </div>
+      <div class="field">
+        <label>正文</label>
+        <textarea id="content" maxlength="2000" placeholder="开箱/抢购体验、商品细节、速度手速……（换行会保留）"></textarea>
+      </div>
+      <div class="edit-foot">
+        <button class="btn" id="pubBtn" onclick="publish()">发布</button>
+        <button class="btn btn-outline" onclick="location.href='/post.html'">取消</button>
+      </div>
+      <div class="hint">发布后将推送到你的所有粉丝的收件箱（推模式 Feed 流）；图片通过 /api/upload/post 上传到服务器本地。</div>
+    </div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('post');
+    loadMe();
+    if (!isLoggedIn()) goLogin();
+    // 已上传图片的相对文件名列表（/posts/x/y/uuid.jpg）
+    const uploaded = [];
+    const grid = document.getElementById('imgGrid');
+    const upBtn = document.getElementById('upBtn');
+
+    async function upload(files) {
+      for (const f of files) {
+        if (uploaded.length >= 9) { toast('最多 9 张图片', 'error'); break; }
+        const fd = new FormData();
+        fd.append('file', f);
+        try {
+          const r = await axios.post('/upload/post', fd);
+          const fileName = r.data;              // 后端返回 /posts/{d1}/{d2}/{uuid}.jpg
+          uploaded.push(fileName);
+          renderPreview();
+        } catch (e) { toast(typeof e === 'string' ? e : '上传失败', 'error'); }
+      }
+      document.getElementById('fileInput').value = '';
+    }
+    function renderPreview() {
+      // 清掉旧预览（保留上传格），再按列表重画
+      grid.querySelectorAll('.img-item').forEach(el => el.remove());
+      uploaded.forEach((name, i) => {
+        const el = document.createElement('div');
+        el.className = 'img-item';
+        el.innerHTML = `<img src="/imgs${name}" alt=""><div class="del" onclick="delImg(${i})">✕</div>`;
+        grid.insertBefore(el, upBtn);
+      });
+    }
+    async function delImg(i) {
+      const name = uploaded.splice(i, 1)[0];
+      try { await axios.get('/upload/post/delete', { params: { name: name } }); } catch (e) { /* 静默 */ }
+      renderPreview();
+    }
+    async function publish() {
+      const title = document.getElementById('title').value.trim();
+      const content = document.getElementById('content').value.trim();
+      if (!title) return toast('请填写标题', 'error');
+      if (!content) return toast('请填写正文', 'error');
+      const btn = document.getElementById('pubBtn');
+      btn.disabled = true; btn.textContent = '发布中…';
+      try {
+        await axios.post('/post', {
+          title: title,
+          content: content,
+          images: uploaded.join(',')
+        });
+        toast('发布成功，已推送给你的粉丝', 'success');
+        setTimeout(() => location.href = '/post.html', 700);
+      } catch (e) {
+        btn.disabled = false; btn.textContent = '发布';
+        toast(e, 'error');
+      }
+    }
+  </script>
+</body>
+</html>

@@ -24,7 +24,7 @@
     </div>
     <div class="card" style="margin-top:18px;padding:22px">
       <div class="section-title" style="margin:0 0 10px">我的订单</div>
-      <div class="sub">订单由秒杀链路异步创建，可在抢购成功的提示中查看订单号；订单中心页将在后续版本上线。</div>
+      <div id="orderList"><div class="sub">加载中…</div></div>
     </div>
   </div>
   <script src="/js/axios.min.js"></script>
@@ -45,6 +45,29 @@
       }
       // /user/sign/count 返回连续签到天数；语义上 count>0 ⟺ 今天已签到
       updateSignState(cntR.status === 'fulfilled' ? (cntR.value.data || 0) : null);
+    }
+    async function loadOrders() {
+      try {
+        const r = await axios.get('/order/of/me');
+        const box = document.getElementById('orderList');
+        if (!r.data.length) {
+          box.innerHTML = '<div class="sub">暂无订单——去 <a href="/index.html" style="color:var(--primary)">首页</a> 抢一单限量好物吧</div>';
+          return;
+        }
+        box.innerHTML = r.data.map(o => `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1eef9">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600">${o.title || '商品 #' + o.productId}</div>
+              <div class="sub">${o.merchantName || ''} · ${(o.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="price" style="font-size:16px">¥${((o.payValue || 0) / 100).toFixed(2)}</div>
+              <div class="sub">订单 ${o.orderId}</div>
+            </div>
+          </div>`).join('');
+      } catch (e) {
+        document.getElementById('orderList').innerHTML = `<div class="sub">${e}</div>`;
+      }
     }
     function updateSignState(count) {
       document.getElementById('streakNum').textContent = count === null ? '-' : count;
@@ -74,6 +97,7 @@
       setTimeout(() => location.href = '/index.html', 500);
     }
     loadProfile();
+    loadOrders();
   </script>
 </body>
 </html>
