@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>晒单 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="section-title" style="margin-top:26px">🔥 热门晒单</div>
+    <div id="postList"></div>
+    <div style="text-align:center;margin:10px 0 30px">
+      <button class="btn btn-ghost" id="moreBtn" onclick="loadMore()">加载更多</button>
+    </div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('post');
+    loadMe();
+    let page = 1;
+    async function loadPosts() {
+      try {
+        const r = await axios.get('/post/hot', { params: { current: page } });
+        const list = document.getElementById('postList');
+        if (page === 1) list.innerHTML = '';
+        if (!r.data.length) {
+          document.getElementById('moreBtn').textContent = '没有更多了';
+          document.getElementById('moreBtn').disabled = true;
+          if (page === 1) list.innerHTML = '<div class="empty">还没有晒单，快来抢购第一单吧</div>';
+          return;
+        }
+        r.data.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'card post-card';
+          card.innerHTML = `
+            <div class="post-head">
+              <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+              <div>
+                <div class="name">${p.name || '闪友'}</div>
+                <div class="sub">${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+              </div>
+            </div>
+            <div class="post-title" onclick="location.href='/merchant.html?id=${p.merchantId || ''}'">${p.title || ''}</div>
+            <div class="post-imgs">${(p.images || '').split(',').filter(Boolean).slice(0, 4)
+                .map(src => `<img src="${src}" alt="" onerror="this.style.display='none'">`).join('')}</div>
+            <div class="post-foot">
+              <button class="like-btn ${p.isLike ? 'liked' : ''}" onclick="toggleLike(this, ${p.id})">
+                ${p.isLike ? '❤' : '🤍'} <span>${p.liked || 0}</span>
+              </button>
+              <span class="sub">💬 ${(p.comments || 0)} 评论</span>
+            </div>`;
+          list.appendChild(card);
+        });
+        page++;
+      } catch (e) {
+        document.getElementById('postList').innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+    async function toggleLike(btn, id) {
+      if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
+      try {
+        await axios.put('/post/like/' + id);
+        const liked = btn.classList.toggle('liked');
+        const num = btn.querySelector('span');
+        num.textContent = +num.textContent + (liked ? 1 : -1);
+        btn.firstChild.textContent = liked ? '❤ ' : '🤍 ';
+      } catch (e) { toast(e, 'error'); }
+    }
+    function loadMore() { loadPosts(); }
+    loadPosts();
+  </script>
+</body>
+</html>

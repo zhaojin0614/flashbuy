@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>商户详情 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="card detail-hero">
+      <img id="mCover" src="/imgs/none.jpg" alt="">
+      <div class="detail-info">
+        <h1 id="mName">加载中…</h1>
+        <div class="m-meta">
+          <span class="score" id="mScore"></span>
+          <span class="tag" id="mAddress"></span>
+          <span class="sub" id="mHours"></span>
+        </div>
+      </div>
+    </div>
+    <div class="section-title">在售商品</div>
+    <div id="productList"></div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('index');
+    loadMe();
+    const merchantId = new URLSearchParams(location.search).get('id');
+    async function loadMerchant() {
+      const r = await axios.get('/merchant/' + merchantId);
+      const m = r.data;
+      document.getElementById('mCover').src = firstImg(m.images);
+      document.getElementById('mName').textContent = m.name;
+      document.getElementById('mScore').textContent = '★ ' + m.score;
+      document.getElementById('mAddress').textContent = m.address || '';
+      document.getElementById('mHours').textContent = '营业时间 ' + (m.openHours || '-');
+    }
+    async function loadProducts() {
+      const list = document.getElementById('productList');
+      list.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const r = await axios.get('/product/list/' + merchantId);
+        list.innerHTML = '';
+        if (!r.data.length) { list.innerHTML = '<div class="empty">商户暂未上架商品</div>'; return; }
+        r.data.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'card p-card';
+          card.innerHTML = `
+            <img class="p-thumb" src="/imgs/products/${p.id % 8 + 1}.jpg" alt="" onerror="this.style.visibility='hidden'">
+            <div class="p-info">
+              <div><span class="badge-limited">${p.type === 1 ? '限量抢购' : '常规'}</span></div>
+              <div class="p-title" onclick="location.href='/product.html?id=${p.id}&merchantId=${merchantId}'">${p.title}</div>
+              <div class="sub">${p.subTitle || ''}</div>
+              <div class="p-actions">
+                <span class="price">¥${(p.payValue / 100).toFixed(2)}
+                  <small>¥${(p.actualValue / 100).toFixed(2)}</small></span>
+                <button class="btn ${p.type === 1 ? '' : 'btn-outline'}"
+                        onclick="location.href='/product.html?id=${p.id}&merchantId=${merchantId}'">
+                  ${p.type === 1 ? '立即抢购' : '查看详情'}</button>
+              </div>
+            </div>`;
+          list.appendChild(card);
+        });
+      } catch (e) {
+        list.innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+    loadMerchant();
+    loadProducts();
+  </script>
+</body>
+</html>

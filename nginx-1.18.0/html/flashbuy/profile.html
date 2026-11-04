@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="profile-head">
+      <img id="avatar" src="/imgs/icons/user.png" alt="">
+      <div>
+        <h1 id="nick">加载中…</h1>
+        <div style="opacity:.85;font-size:13px;margin-top:4px" id="phone"></div>
+      </div>
+    </div>
+    <div class="card sign-card">
+      <div class="sign-num"><b id="monthCount">-</b><span>本月签到</span></div>
+      <div class="sign-num"><b id="streak">-</b><span>连续签到</span></div>
+      <button class="btn" id="signBtn" onclick="doSign()">📅 签到打卡</button>
+      <div class="link-out" onclick="doLogout()">退出登录</div>
+    </div>
+    <div class="card" style="margin-top:18px;padding:22px">
+      <div class="section-title" style="margin:0 0 10px">我的订单</div>
+      <div class="sub">订单由秒杀链路异步创建，可在抢购成功的提示中查看订单号；订单中心页将在后续版本上线。</div>
+    </div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('');
+    if (!isLoggedIn()) goLogin();
+    async function loadProfile() {
+      try {
+        const r = await axios.get('/user/me');
+        document.getElementById('nick').textContent = r.data.nick || '闪友';
+        document.getElementById('avatar').src = r.data.icon || '/imgs/icons/user.png';
+        const phone = sessionStorage.getItem('token') && r.data.phone || '';
+        document.getElementById('phone').textContent = phone ? '手机号：' + phone : '';
+      } catch (e) { toast(e, 'error'); }
+      try {
+        const r = await axios.get('/user/sign/count');
+        document.getElementById('streak').textContent = r.data || 0;
+        document.getElementById('monthCount').textContent = r.data || 0;
+      } catch (e) { /* 忽略 */ }
+    }
+    async function doSign() {
+      try {
+        const r = await axios.post('/user/sign');
+        toast('签到成功 🎉', 'success');
+        document.getElementById('signBtn').disabled = true;
+        document.getElementById('signBtn').textContent = '今日已签到';
+        const c = await axios.get('/user/sign/count');
+        document.getElementById('monthCount').textContent = c.data.signCount || 0;
+        document.getElementById('streak').textContent = c.data.continuousDays || 0;
+      } catch (e) {
+        document.getElementById('signBtn').disabled = true;
+        document.getElementById('signBtn').textContent = '今日已签到';
+        toast(typeof e === 'string' && e.includes('已签到') ? '今日已签到' : e, 'error');
+      }
+    }
+    async function doLogout() {
+      try { await axios.post('/user/logout'); } catch (e) { /* 忽略 */ }
+      sessionStorage.clear();
+      toast('已退出登录', 'success');
+      setTimeout(() => location.href = '/index.html', 500);
+    }
+    loadProfile();
+  </script>
+</body>
+</html>

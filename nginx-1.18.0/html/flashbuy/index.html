@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>闪购 FlashBuy - 潮玩限量抢购平台</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="hero">
+      <h1>限量好物，手慢无 ⚡</h1>
+      <p>潮玩手办 / 盲盒 / 演出门票 / 限定模型 —— Redis + Lua 原子预扣，秒级开抢</p>
+    </div>
+    <div id="typeBar" class="type-bar"></div>
+    <div id="merchantList" class="grid"></div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('index');
+    loadMe();
+    let currentType = null;
+    async function loadTypes() {
+      const r = await axios.get('/merchant-type/list');
+      const bar = document.getElementById('typeBar');
+      r.data.forEach(t => {
+        const chip = document.createElement('div');
+        chip.className = 'type-chip';
+        chip.textContent = t.name;
+        chip.dataset.id = t.id;
+        chip.onclick = () => {
+          currentType = t.id;
+          document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          loadMerchants();
+        };
+        bar.appendChild(chip);
+      });
+      // 默认选中第一个类型
+      if (bar.firstChild) bar.firstChild.click();
+    }
+    async function loadMerchants() {
+      const list = document.getElementById('merchantList');
+      list.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const r = await axios.get('/merchant/of/type', { params: { typeId: currentType, current: 1 } });
+        list.innerHTML = '';
+        if (!r.data.length) { list.innerHTML = '<div class="empty">该分类暂无商户</div>'; return; }
+        r.data.forEach(m => {
+          const card = document.createElement('div');
+          card.className = 'card m-card';
+          card.onclick = () => location.href = '/merchant.html?id=' + m.id;
+          card.innerHTML = `
+            <img class="m-cover" src="${firstImg(m.images)}" alt="">
+            <div class="m-body">
+              <div class="m-name">${m.name}</div>
+              <div class="m-meta">
+                <span class="score">★ ${m.score}</span>
+                <span class="sub">${m.area || ''}</span>
+                <span class="sub">月售 ${m.sold}</span>
+              </div>
+            </div>`;
+          list.appendChild(card);
+        });
+      } catch (e) {
+        list.innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+    loadTypes();
+  </script>
+</body>
+</html>

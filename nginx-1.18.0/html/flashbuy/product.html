@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>商品详情 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div id="pdWrap" class="pd-wrap"></div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('index');
+    loadMe();
+    const qs = new URLSearchParams(location.search);
+    const productId = qs.get('id'), merchantId = qs.get('merchantId');
+    let product = null;
+    async function loadProduct() {
+      try {
+        const r = await axios.get('/product/list/' + merchantId);
+        product = r.data.find(p => String(p.id) === String(productId));
+        if (!product) return document.getElementById('pdWrap').innerHTML = '<div class="empty">商品不存在</div>';
+        document.title = product.title + ' - 闪购 FlashBuy';
+        const limited = product.type === 1;
+        document.getElementById('pdWrap').innerHTML = `
+          <img class="pd-cover" src="/imgs/products/${product.id % 8 + 1}.jpg" alt="" onerror="this.style.visibility='hidden'">
+          <div class="card pd-panel">
+            <span class="badge-limited">${limited ? '限量发售' : '常规商品'}</span>
+            <h1 style="margin-top:10px">${product.title}</h1>
+            <div class="sub">${product.subTitle || ''}</div>
+            <div class="price">¥${(product.payValue / 100).toFixed(2)}
+              <small>¥${(product.actualValue / 100).toFixed(2)}</small></div>
+            <div class="rules">${product.rules || ''}</div>
+            <button class="btn seckill-btn" id="buyBtn" onclick="buy()">${limited ? '⚡ 立即抢购' : '立即购买'}</button>
+            <div class="countdown-tip">${limited ? 'Redis 原子预扣库存 · 异步下单 · 售完即止' : '提交订单后将在商户门店核销'}</div>
+          </div>`;
+      } catch (e) {
+        document.getElementById('pdWrap').innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+    async function buy() {
+      if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
+      const btn = document.getElementById('buyBtn');
+      btn.disabled = true; btn.textContent = '抢购中…';
+      try {
+        const r = await axios.post('/order/seckill/' + productId);
+        btn.textContent = '抢购成功 ✓';
+        toast('抢购成功！订单号 ' + r.data + '，订单正在异步创建', 'success');
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = product.type === 1 ? '⚡ 立即抢购' : '立即购买';
+        toast(typeof e === 'string' ? e : '抢购失败', 'error');
+      }
+    }
+    loadProduct();
+  </script>
+</body>
+</html>
