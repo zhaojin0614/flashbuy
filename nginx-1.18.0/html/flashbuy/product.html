@@ -27,7 +27,7 @@
         document.title = product.title + ' - 闪购 FlashBuy';
         const limited = product.type === 1;
         document.getElementById('pdWrap').innerHTML = `
-          <img class="pd-cover" src="/imgs/products/${product.id % 8 + 1}.jpg" alt="" onerror="this.style.visibility='hidden'">
+          <img class="pd-cover" src="/imgs/shops/${merchantId}.jpg" alt="" onerror="this.style.visibility='hidden'">
           <div class="card pd-panel">
             <span class="badge-limited">${limited ? '限量发售' : '常规商品'}</span>
             <h1 style="margin-top:10px">${product.title}</h1>
