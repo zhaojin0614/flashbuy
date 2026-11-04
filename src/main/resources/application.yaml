@@ -26,3 +26,6 @@ mybatis-plus:
 logging:
   level:
     com.flashbuy: debug
+jwt:
+  secret: flashbuy-demo-hs256-secret-key-2026
+  access-ttl-hours: 2

@@ -5,6 +5,11 @@ public class RedisConstants {
     public static final Long LOGIN_CODE_TTL = 2L;
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 24L;
+    /** refreshToken：随机串 -> uid，7 天有效，一次性轮换 */
+    public static final String LOGIN_REFRESH_KEY = "login:refresh:";
+    public static final Long LOGIN_REFRESH_TTL = 168L;
+    /** JWT 黑名单：jti -> 1，TTL = token 剩余有效期（登出/撤销用） */
+    public static final String LOGIN_JWT_DENY_KEY = "login:jwt:deny:";
 
     public static final Long CACHE_NULL_TTL = 2L;
 

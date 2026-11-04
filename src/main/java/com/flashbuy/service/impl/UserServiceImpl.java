@@ -11,6 +11,8 @@ import com.flashbuy.dto.UserDTO;
 import com.flashbuy.entity.User;
 import com.flashbuy.mapper.UserMapper;
 import com.flashbuy.service.IUserService;
+import com.flashbuy.utils.JwtUtil;
+import com.flashbuy.utils.RateLimiter;
 import com.flashbuy.utils.RegexUtils;
 import com.flashbuy.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
@@ -49,12 +51,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private JwtUtil jwtUtil;
+
+    @Resource
+    private RateLimiter rateLimiter;
+
     @Override
     public Result sendCode(String phone, HttpSession session) {
         //1.校验手机号
         if(RegexUtils.isPhoneInvalid(phone)){
             //2.不符合：返回错误信息
             return Result.fail("手机号格式错误！");
+        }
+        //1.5.滑动窗口限流：同一手机号 60 秒内最多发 1 次，防止验证码轰炸/短信费用被打爆
+        if(!rateLimiter.isAllowed("rl:code:" + phone, 60_000L, 1)){
+            return Result.fail("发送太频繁，请稍后再试");
         }
         //3.符合，生成验证码保存到 redis
         String code=RandomUtil.randomNumbers(6);
@@ -74,6 +86,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             //2.不符合：返回错误信息
             return Result.fail("手机号格式错误！");
         }
+        //1.5.滑动窗口限流：同一手机号 60 秒内最多尝试登录 5 次，防暴力猜验证码
+        if(!rateLimiter.isAllowed("rl:login:" + phone, 60_000L, 5)){
+            return Result.fail("尝试过于频繁，请稍后再试");
+        }
         //2.校验验证码，从redis获取
         String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY+phone);
         String code=loginForm.getCode();
@@ -89,22 +105,44 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             save(user);
         }
         //5.保存用户到redis
-        //5.1.生成token，作为登录令牌
-        String token=UUID.randomUUID().toString(true);
-        //5.2.将User对象转为Hash存储
-        UserDTO userDTO=new UserDTO();
-        BeanUtils.copyProperties(user, userDTO);
-        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO,new HashMap<>(),
-                CopyOptions.create()
-                        .setIgnoreNullValue(true)
-                        .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString()));
-        //5.3.存储
-        stringRedisTemplate.opsForHash().putAll(LOGIN_USER_KEY+token,userMap);
-        //5.4.设置token有效期
-        stringRedisTemplate.expire(LOGIN_USER_KEY+token,LOGIN_USER_TTL,TimeUnit.HOURS);
+        //6.签发双 Token（P1 认证升级：JWT 无状态 accessToken + Redis 轮换 refreshToken）
+        //6.1.accessToken：JWT 携带 uid/nick/icon，2 小时有效，无状态校验
+        String accessToken = jwtUtil.createAccessToken(user.getId(), user.getNickName(), user.getIcon());
+        //6.2.refreshToken：随机串存 Redis，7 天有效，用于 accessToken 过期后换新（一次性轮换）
+        String refreshToken = UUID.randomUUID().toString(true);
+        stringRedisTemplate.opsForValue().set(LOGIN_REFRESH_KEY + refreshToken,
+                user.getId().toString(), LOGIN_REFRESH_TTL, TimeUnit.HOURS);
 
-        //5.返回用户
-        return Result.ok(token);
+        //7.返回双 Token
+        Map<String, String> tokens = new HashMap<>();
+        tokens.put("accessToken", accessToken);
+        tokens.put("refreshToken", refreshToken);
+        return Result.ok(tokens);
+    }
+
+    @Override
+    public Result refreshLogin(String refreshToken) {
+        //1.校验 refreshToken 是否有效（Redis 中存在）
+        String uid = stringRedisTemplate.opsForValue().get(LOGIN_REFRESH_KEY + refreshToken);
+        if (uid == null) {
+            return Result.fail("登录已过期，请重新登录");
+        }
+        //2.查用户（昵称/头像要进新 accessToken）
+        User user = getById(Long.valueOf(uid));
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        //3.轮换 refreshToken：删除旧的，签发新的（防重放——被盗的旧 refreshToken 立即失效）
+        stringRedisTemplate.delete(LOGIN_REFRESH_KEY + refreshToken);
+        String newAccessToken = jwtUtil.createAccessToken(user.getId(), user.getNickName(), user.getIcon());
+        String newRefreshToken = UUID.randomUUID().toString(true);
+        stringRedisTemplate.opsForValue().set(LOGIN_REFRESH_KEY + newRefreshToken,
+                uid, LOGIN_REFRESH_TTL, TimeUnit.HOURS);
+        //4.返回新双 Token
+        Map<String, String> tokens = new HashMap<>();
+        tokens.put("accessToken", newAccessToken);
+        tokens.put("refreshToken", newRefreshToken);
+        return Result.ok(tokens);
     }
 
     @Override
@@ -163,5 +201,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             num >>>= 1;
         }
         return Result.ok(count);
+    }
+
+    @Override
+    public Result signMonthCount() {
+        //1.获取当前登录用户
+        Long userId = UserHolder.getUser().getId();
+        //2.拼接本月 BitMap 的 key：sign:{userId}:{yyyyMM}
+        LocalDateTime now = LocalDateTime.now();
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+        //3.BITCOUNT 统计整个 BitMap 中 1 的个数 = 本月累计签到天数
+        //  与连续签到的区别：累计不看顺序，全月签到过的每一天都计入
+        Long count = stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Long>) con ->
+                con.stringCommands().bitCount(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        return Result.ok(count == null ? 0 : count);
     }
 }

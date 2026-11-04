@@ -10,16 +10,24 @@ import com.flashbuy.entity.User;
 import com.flashbuy.entity.UserInfo;
 import com.flashbuy.service.IUserInfoService;
 import com.flashbuy.service.IUserService;
+import com.flashbuy.utils.JwtUtil;
 import com.flashbuy.utils.UserHolder;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
-import static com.flashbuy.utils.RedisConstants.LOGIN_USER_KEY;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import static com.flashbuy.utils.RedisConstants.LOGIN_JWT_DENY_KEY;
+import static com.flashbuy.utils.RedisConstants.LOGIN_REFRESH_KEY;
 
 /**
  * <p>
@@ -30,6 +38,7 @@ import static com.flashbuy.utils.RedisConstants.LOGIN_USER_KEY;
  * @since 2021-12-22
  */
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/user")
 public class UserController {
@@ -43,35 +52,55 @@ public class UserController {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private JwtUtil jwtUtil;
+
     /**
-     * 发送手机验证码
+     * 发送手机验证码（同手机号 60 秒内限流 1 次）
      */
     @PostMapping("code")
-    public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
+    public Result sendCode(@RequestParam("phone") @NotBlank(message = "手机号不能为空")
+                           @Pattern(regexp = "^1\\d{10}$", message = "手机号格式不正确") String phone,
+                           HttpSession session) {
         // 发送短信验证码并保存验证码
         return userService.sendCode(phone, session);
     }
 
     /**
-     * 登录功能
-     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
+     * 登录功能：校验通过后签发双 Token（accessToken + refreshToken）
      */
     @PostMapping("/login")
-    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session){
+    public Result login(@Valid @RequestBody LoginFormDTO loginForm, HttpSession session){
         // 实现登录功能
         return userService.login(loginForm, session);
     }
 
     /**
-     * 登出功能
-     * @return 无
+     * 刷新登录：用 refreshToken 换新的双 Token（一次性轮换，防重放）
+     */
+    @PostMapping("/refresh")
+    public Result refresh(@RequestBody Map<String, String> body) {
+        return userService.refreshLogin(body.get("refreshToken"));
+    }
+
+    /**
+     * 登出：accessToken 的 jti 加入黑名单（TTL=剩余有效期），refreshToken 直接删除
      */
     @PostMapping("/logout")
-    public Result logout(HttpServletRequest request){
-        // 删除Redis中保存的登录token
-        String token = request.getHeader("authorization");
+    public Result logout(@RequestHeader(value = "authorization", required = false) String token,
+                         @RequestBody(required = false) Map<String, String> body){
         if (StrUtil.isNotBlank(token)) {
-            stringRedisTemplate.delete(LOGIN_USER_KEY + token);
+            Map<String, Object> payload = jwtUtil.parse(token);
+            if (payload != null) {
+                long ttl = jwtUtil.remainingMillis(payload);
+                if (ttl > 0) {
+                    stringRedisTemplate.opsForValue().set(LOGIN_JWT_DENY_KEY + jwtUtil.getJti(payload),
+                            "1", ttl, TimeUnit.MILLISECONDS);
+                }
+            }
+        }
+        if (body != null && StrUtil.isNotBlank(body.get("refreshToken"))) {
+            stringRedisTemplate.delete(LOGIN_REFRESH_KEY + body.get("refreshToken"));
         }
         return Result.ok();
     }
@@ -117,5 +146,13 @@ public class UserController {
     @GetMapping("/sign/count")
     public Result signCount(){
         return userService.signCount();
+    }
+
+    /**
+     * 本月累计签到天数（BITCOUNT）
+     */
+    @GetMapping("/sign/month-count")
+    public Result signMonthCount(){
+        return userService.signMonthCount();
     }
 }

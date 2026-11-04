@@ -5,6 +5,9 @@ axios.defaults.timeout = 5000;
 // 防御：历史遗留的坏 token（如字符串 "undefined"）自动清除
 if (sessionStorage.getItem('token') === 'undefined') sessionStorage.removeItem('token');
 
+// 单飞刷新的共享 Promise：同一时刻只有一次 /user/refresh 在路上
+let refreshingPromise = null;
+
 // 请求拦截：携带 token
 axios.interceptors.request.use(config => {
   const token = sessionStorage.getItem('token');
@@ -17,7 +20,33 @@ axios.interceptors.response.use(response => {
   if (!response.data.success) return Promise.reject(response.data.errorMsg || '操作失败');
   return response.data;
 }, error => {
-  if (error.response && error.response.status === 401) {
+  const resp = error.response;
+  if (resp && resp.status === 401) {
+    const cfg = resp.config || {};
+    const rt = sessionStorage.getItem('refreshToken');
+    // 单飞刷新：并发多个 401 只发一次 /user/refresh，成功后统一重放原请求
+    if (rt && !cfg._retried) {
+      if (!refreshingPromise) {
+        refreshingPromise = axios.post('/user/refresh', { refreshToken: rt }).then(r => {
+          sessionStorage.setItem('token', r.data.accessToken);
+          sessionStorage.setItem('refreshToken', r.data.refreshToken);
+          refreshingPromise = null;
+        }).catch(e => {
+          refreshingPromise = null;
+          sessionStorage.clear();
+          if (location.pathname.indexOf('login.html') === -1) {
+            setTimeout(() => location.href = '/login.html', 200);
+          }
+          throw e;
+        });
+      }
+      return refreshingPromise.then(() => {
+        cfg._retried = true;   // 防止刷新后仍 401 造成二次循环
+        cfg.headers = cfg.headers || {};
+        cfg.headers['authorization'] = sessionStorage.getItem('token');
+        return axios(cfg);
+      });
+    }
     // 已在登录页时不再跳转，避免登录过程中的 401 造成死循环
     if (location.pathname.indexOf('login.html') === -1) {
       setTimeout(() => location.href = '/login.html', 300);

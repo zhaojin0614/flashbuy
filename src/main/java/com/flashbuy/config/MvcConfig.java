@@ -23,6 +23,7 @@ public class MvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(loginInterceptor)
                 .excludePathPatterns("/user/code")
                 .excludePathPatterns("/user/login")
+                .excludePathPatterns("/user/refresh")
                 .excludePathPatterns("/post/hot")
                 .excludePathPatterns("/merchant/**")
                 .excludePathPatterns("/merchant-type/**")

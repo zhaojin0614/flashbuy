@@ -21,7 +21,17 @@ public interface IUserService extends IService<User> {
 
     Result login(LoginFormDTO loginForm, HttpSession session);
 
+    /**
+     * 刷新登录：校验 refreshToken 并轮换，签发新的双 Token
+     */
+    Result refreshLogin(String refreshToken);
+
     Result sign();
 
     Result signCount();
+
+    /**
+     * 本月累计签到天数（BITCOUNT 统计整月 BitMap 中 1 的个数）
+     */
+    Result signMonthCount();
 }

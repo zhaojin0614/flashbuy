@@ -17,7 +17,8 @@
       </div>
     </div>
     <div class="card sign-card">
-      <div class="sign-num"><b id="streakNum">-</b><span>连续签到（天）</span></div>
+      <div class="sign-num"><b id="monthNum">-</b><span>本月累计</span></div>
+      <div class="sign-num"><b id="streakNum">-</b><span>连续签到</span></div>
       <div class="sign-num"><b id="todayState">-</b><span>今日状态</span></div>
       <button class="btn" id="signBtn" onclick="doSign()">📅 签到打卡</button>
       <div class="link-out" onclick="doLogout()">退出登录</div>
@@ -33,16 +34,19 @@
     renderNav('');
     if (!isLoggedIn()) goLogin();
     async function loadProfile() {
-      // 并行拉取用户信息与签到状态，避免串行等待
-      const [meR, cntR] = await Promise.allSettled([
+      // 并行拉取用户信息、连续签到、本月累计，避免串行等待
+      const [meR, cntR, monR] = await Promise.allSettled([
         axios.get('/user/me'),
-        axios.get('/user/sign/count')
+        axios.get('/user/sign/count'),
+        axios.get('/user/sign/month-count')
       ]);
       if (meR.status === 'fulfilled') {
         const me = meR.value.data;
         document.getElementById('nick').textContent = me.nickName || me.nick || '闪友';
         document.getElementById('avatar').src = me.icon || '/imgs/icons/user.png';
       }
+      document.getElementById('monthNum').textContent =
+        monR.status === 'fulfilled' ? (monR.value.data || 0) : '-';
       // /user/sign/count 返回连续签到天数；语义上 count>0 ⟺ 今天已签到
       updateSignState(cntR.status === 'fulfilled' ? (cntR.value.data || 0) : null);
     }
@@ -84,14 +88,18 @@
       } catch (e) {
         toast(typeof e === 'string' ? e : '签到失败', 'error');
       }
-      // 无论成功与否都按后端真实状态刷新
+      // 无论成功与否都按后端真实状态刷新（连续/本月一起更新）
       try {
         const c = await axios.get('/user/sign/count');
+        const m = await axios.get('/user/sign/month-count');
         updateSignState(c.data || 0);
+        document.getElementById('monthNum').textContent = m.data || 0;
       } catch (e) { /* 下次刷新页面会再取 */ }
     }
     async function doLogout() {
-      try { await axios.post('/user/logout'); } catch (e) { /* 忽略 */ }
+      try {
+        await axios.post('/user/logout', { refreshToken: sessionStorage.getItem('refreshToken') });
+      } catch (e) { /* 忽略 */ }
       sessionStorage.clear();
       toast('已退出登录', 'success');
       setTimeout(() => location.href = '/index.html', 500);

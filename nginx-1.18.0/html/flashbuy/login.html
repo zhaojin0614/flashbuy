@@ -54,8 +54,9 @@
       if (!code) return toast('请输入验证码', 'error');
       try {
         const r = await axios.post('/user/login', { phone, code });
-        // 登录接口的 data 就是 token 字符串本身
-        sessionStorage.setItem('token', r.data);
+        // P1 双 Token：accessToken（JWT 2h）+ refreshToken（7 天轮换）
+        sessionStorage.setItem('token', r.data.accessToken);
+        sessionStorage.setItem('refreshToken', r.data.refreshToken);
         try {
           const me = await axios.get('/user/me');
           sessionStorage.setItem('nick', me.data.nickName || me.data.nick || '我');
