@@ -17,12 +17,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
+import org.springframework.data.geo.Point;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.flashbuy.utils.RedisConstants.*;
 
@@ -49,6 +52,29 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     private StringRedisTemplate stringRedisTemplate;
     @Autowired
     private CacheClient cacheClient;
+
+    /**
+     * 启动时把商户坐标同步到 Redis GEO，保证“附近商户”开箱可用。
+     * GEOADD 是幂等的，重复启动只会刷新坐标。
+     */
+    @PostConstruct
+    public void initMerchantGeo() {
+        List<Merchant> merchants = list();
+        Map<Long, List<Merchant>> grouped = merchants.stream()
+                .filter(m -> m.getTypeId() != null && m.getX() != null && m.getY() != null)
+                .collect(Collectors.groupingBy(Merchant::getTypeId));
+        for (Map.Entry<Long, List<Merchant>> entry : grouped.entrySet()) {
+            String key = MERCHANT_GEO_KEY + entry.getKey();
+            List<RedisGeoCommands.GeoLocation<String>> locations = new ArrayList<>(entry.getValue().size());
+            for (Merchant merchant : entry.getValue()) {
+                locations.add(new RedisGeoCommands.GeoLocation<>(
+                        merchant.getId().toString(),
+                        new Point(merchant.getX(), merchant.getY())
+                ));
+            }
+            stringRedisTemplate.opsForGeo().add(key, locations);
+        }
+    }
 
     @Override
     public Result queryById(Long id) {
@@ -139,22 +165,27 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     }
 
     @Override
-    public Result queryMerchantByType(Integer typeId, Integer current, Double x, Double y) {
-        // 1.判断是否需要根据坐标查询
-        if (x == null || y == null) {
-            // 不需要坐标查询，按数据库查询
-            Page<Merchant> page = query()
-                    .eq("type_id", typeId)
-                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
-            // 返回数据
+    public Result queryMerchantByType(Integer typeId, Integer current, Double x, Double y, String sortBy) {
+        // 1.是否走 GEO：有坐标且排序为距离（或未指定排序）
+        boolean byDistance = x != null && y != null
+                && (sortBy == null || sortBy.isBlank() || "distance".equals(sortBy));
+        if (!byDistance) {
+            // 2.评分/人气排序走数据库；没有坐标时默认按评分
+            var chain = query().eq("type_id", typeId);
+            if ("comments".equals(sortBy)) {
+                chain.orderByDesc("comments");
+            } else {
+                chain.orderByDesc("score");
+            }
+            Page<Merchant> page = chain.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
             return Result.ok(page.getRecords());
         }
 
-        // 2.计算分页参数
+        // 3.计算分页参数
         int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
         int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
 
-        // 3.查询redis、按照距离排序、分页。结果：merchantId、distance
+        // 4.查询redis、按照距离排序、分页。结果：merchantId、distance
         String key = MERCHANT_GEO_KEY + typeId;
         GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo()
                 .search(
@@ -163,7 +194,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                         new Distance(5000),
                         RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(end)
                 );
-        // 4.解析出id
+        // 5.解析出id
         if (results == null) {
             return Result.ok(Collections.emptyList());
         }
@@ -172,24 +203,24 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
             // 没有下一页了，结束
             return Result.ok(Collections.emptyList());
         }
-        // 4.1.截取 from ~ end的部分
+        // 5.1.截取 from ~ end的部分
         List<Long> ids = new ArrayList<>(list.size());
         Map<String, Distance> distanceMap = new HashMap<>(list.size());
         list.stream().skip(from).forEach(result -> {
-            // 4.2.获取店铺id
+            // 5.2.获取商户id
             String merchantIdStr = result.getContent().getName();
             ids.add(Long.valueOf(merchantIdStr));
-            // 4.3.获取距离
+            // 5.3.获取距离
             Distance distance = result.getDistance();
             distanceMap.put(merchantIdStr, distance);
         });
-        // 5.根据id查询Merchant
+        // 6.根据id查询Merchant
         String idStr = StrUtil.join(",", ids);
         List<Merchant> merchants = query().in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list();
         for (Merchant merchant : merchants) {
             merchant.setDistance(distanceMap.get(merchant.getId().toString()).getValue());
         }
-        // 6.返回
+        // 7.返回
         return Result.ok(merchants);
     }
 }

@@ -120,17 +120,34 @@ img { display: block; }
 }
 .hero h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
 .hero p { opacity: .92; font-size: 14px; }
-.type-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.type-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .type-chip {
-  padding: 8px 18px; border-radius: 999px; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px; font-size: 14px; cursor: pointer;
   background: #fff; color: var(--text-sub); border: 1.5px solid transparent;
   box-shadow: var(--shadow); transition: all .15s;
 }
+.type-chip img { width: 22px; height: 22px; object-fit: contain; }
 .type-chip:hover { color: var(--primary); }
 .type-chip.active {
   background: var(--primary); color: #fff; font-weight: 600;
   border-color: var(--primary-dark);
 }
+.index-search { display: flex; gap: 10px; margin: 0 0 16px; }
+.index-search input {
+  flex: 1; height: 44px; border: 1.5px solid #e4e0f3; border-radius: 999px;
+  padding: 0 18px; font-size: 14px; outline: none; background: #fff;
+}
+.index-search input:focus { border-color: var(--primary); }
+.index-search .btn { padding: 0 24px; }
+.filter-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.filter-label { font-size: 13px; color: var(--text-sub); }
+.sort-bar { display: flex; gap: 8px; }
+.sort-chip {
+  font-size: 13px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  background: #fff; color: var(--text-sub); box-shadow: var(--shadow);
+}
+.sort-chip.active { background: var(--primary); color: #fff; font-weight: 600; }
 
 /* ===== 商户卡片 ===== */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
@@ -140,11 +157,19 @@ img { display: block; }
 .m-body { padding: 14px 16px 16px; }
 .m-name { font-size: 16px; font-weight: 700; margin: 6px 0 8px; }
 .m-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.m-address { margin-top: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.distance { color: var(--primary); }
 .score { color: #fdbe2e; font-weight: 700; }
 
 /* ===== 商户详情页 ===== */
 .detail-hero { margin-top: 22px; border-radius: 20px; overflow: hidden; }
 .detail-hero img { width: 100%; height: 300px; object-fit: cover; }
+.merchant-gallery { display: flex; gap: 8px; padding: 10px 0 0; flex-wrap: wrap; }
+.merchant-gallery img {
+  width: 76px; height: 60px; object-fit: cover; border-radius: 8px; cursor: pointer;
+  border: 2px solid transparent;
+}
+.merchant-gallery img:hover { border-color: var(--primary); }
 .detail-info { padding: 20px 24px; }
 .detail-info h1 { font-size: 24px; font-weight: 800; margin-bottom: 10px; }
 .info-row { display: flex; gap: 10px; margin-top: 6px; font-size: 14px; }
@@ -181,6 +206,11 @@ img { display: block; }
 .pd-panel { flex: 1; padding: 26px; align-self: flex-start; }
 .pd-panel h1 { font-size: 21px; font-weight: 800; margin-bottom: 8px; line-height: 1.4; }
 .pd-panel .price { font-size: 30px; margin: 14px 0 4px; }
+.discount {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 6px;
+  background: #fff0f5; color: var(--danger); font-size: 13px; font-weight: 700;
+  vertical-align: middle;
+}
 .rules {
   margin: 16px 0; padding: 14px 16px; border-radius: 12px;
   background: #f6f4fd; font-size: 13px; line-height: 2; white-space: pre-line;

@@ -27,4 +27,6 @@ public interface IPostService extends IService<Post> {
     Result queryPostOfFollow(Long max, Integer offset);
 
     Result queryPostByUserId(Long userId, Integer current);
+
+    Result queryPostByMerchant(Long merchantId, Integer current);
 }

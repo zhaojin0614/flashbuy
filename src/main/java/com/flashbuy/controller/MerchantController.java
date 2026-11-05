@@ -71,9 +71,10 @@ public class MerchantController {
             @RequestParam("typeId") Integer typeId,
             @RequestParam(value = "current", defaultValue = "1") Integer current,
             @RequestParam(value = "x", required = false) Double x,
-            @RequestParam(value = "y", required = false) Double y
+            @RequestParam(value = "y", required = false) Double y,
+            @RequestParam(value = "sortBy", required = false) String sortBy
     ) {
-        return merchantService.queryMerchantByType(typeId, current, x, y);
+        return merchantService.queryMerchantByType(typeId, current, x, y, sortBy);
     }
 
     /**

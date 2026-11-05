@@ -15,13 +15,25 @@
         <h1 id="mName">加载中…</h1>
         <div class="m-meta">
           <span class="score" id="mScore"></span>
+          <span class="sub" id="mComments"></span>
+          <span class="sub" id="mAvg"></span>
+          <span class="sub" id="mSold"></span>
+        </div>
+        <div class="m-meta" style="margin-top:8px">
           <span class="tag" id="mAddress"></span>
           <span class="sub" id="mHours"></span>
         </div>
+        <div id="mGallery" class="merchant-gallery"></div>
       </div>
     </div>
     <div class="section-title">在售商品</div>
     <div id="productList"></div>
+
+    <div class="section-title">用户晒单</div>
+    <div id="merchantPosts"></div>
+    <div style="text-align:center;margin:10px 0 30px">
+      <button class="btn btn-ghost" id="postMore" onclick="loadMerchantPosts(false)" style="display:none">加载更多</button>
+    </div>
   </div>
   <script src="/js/axios.min.js"></script>
   <script src="/js/common.js"></script>
@@ -29,6 +41,12 @@
     renderNav('index');
     loadMe();
     const merchantId = new URLSearchParams(location.search).get('id');
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
     function formatTime(value) {
@@ -51,11 +69,20 @@
     async function loadMerchant() {
       const r = await axios.get('/merchant/' + merchantId);
       const m = r.data;
-      document.getElementById('mCover').src = firstImg(m.images);
+      const imgs = (m.images || '').split(',').filter(Boolean);
+      if (imgs.length) document.getElementById('mCover').src = imgs[0];
       document.getElementById('mName').textContent = m.name;
-      document.getElementById('mScore').textContent = '★ ' + m.score;
+      document.getElementById('mScore').textContent = '★ ' + ((Number(m.score) || 0) / 10).toFixed(1);
+      document.getElementById('mComments').textContent = (m.comments || 0) + '条评价';
+      document.getElementById('mAvg').textContent = '￥' + (m.avgPrice || 0) + '/人';
+      document.getElementById('mSold').textContent = '月售 ' + (m.sold || 0);
       document.getElementById('mAddress').textContent = m.address || '';
       document.getElementById('mHours').textContent = '营业时间 ' + (m.openHours || '-');
+      if (imgs.length > 1) {
+        document.getElementById('mGallery').innerHTML = imgs.map((src, i) => `
+          <img src="${src}" alt="" onclick="document.getElementById('mCover').src='${src}'"
+               onerror="this.style.display='none'">`).join('');
+      }
     }
     async function loadProducts() {
       const list = document.getElementById('productList');
@@ -92,8 +119,74 @@
         list.innerHTML = `<div class="empty">${e}</div>`;
       }
     }
+    let postPage = 1;
+    let postHasMore = true;
+    let postLoading = false;
+
+    async function loadMerchantPosts(reset) {
+      if (postLoading) return;
+      if (reset) {
+        postPage = 1;
+        postHasMore = true;
+        document.getElementById('merchantPosts').innerHTML = '';
+      }
+      if (!postHasMore) return;
+      postLoading = true;
+      const moreBtn = document.getElementById('postMore');
+      moreBtn.disabled = true;
+      moreBtn.textContent = '加载中…';
+      try {
+        const r = await axios.get('/post/of/merchant', {
+          params: { merchantId: merchantId, current: postPage }
+        });
+        const list = r.data || [];
+        const box = document.getElementById('merchantPosts');
+        if (!list.length) {
+          postHasMore = false;
+          if (postPage === 1) box.innerHTML = '<div class="empty">还没有用户晒单</div>';
+        } else {
+          list.forEach(p => {
+            const imgs = (p.images || '').split(',').filter(Boolean);
+            const card = document.createElement('div');
+            card.className = 'card post-card';
+            card.style.cursor = 'pointer';
+            card.onclick = () => location.href = '/post-detail.html?id=' + p.id;
+            card.innerHTML = `
+              <div class="post-head">
+                <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+                <div>
+                  <div class="name">${escapeHtml(p.name || '闪友')}</div>
+                  <div class="sub">${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+                </div>
+              </div>
+              <div class="post-title">${escapeHtml(p.title || '')}</div>
+              ${imgs.length ? `<div class="post-imgs">${imgs.slice(0, 4)
+                  .map(src => `<img src="${src}" alt="" onerror="this.style.display='none'">`).join('')}</div>` : ''}
+              <div class="post-foot">
+                <span class="sub">❤ ${p.liked || 0}</span>
+                <span class="sub">💬 ${p.comments || 0} 评论</span>
+              </div>`;
+            box.appendChild(card);
+          });
+          if (list.length < 10) {
+            postHasMore = false;
+          } else {
+            postPage++;
+          }
+        }
+      } catch (e) {
+        if (postPage === 1) document.getElementById('merchantPosts').innerHTML = `<div class="empty">${e}</div>`;
+      } finally {
+        postLoading = false;
+        moreBtn.disabled = false;
+        moreBtn.textContent = '加载更多';
+        moreBtn.style.display = postHasMore ? 'inline-flex' : 'none';
+      }
+    }
+
     loadMerchant();
     loadProducts();
+    loadMerchantPosts(true);
   </script>
 </body>
 </html>

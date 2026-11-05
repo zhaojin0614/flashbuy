@@ -63,6 +63,8 @@
         const limited = product.type === 1;
         const phase = seckillPhase(product);
         const disabled = limited && phase !== 'active';
+        const discount = product.actualValue > product.payValue && product.payValue > 0
+          ? (product.payValue * 10 / product.actualValue).toFixed(1) : '';
         document.getElementById('pdWrap').innerHTML = `
           <img class="pd-cover" src="/imgs/shops/${merchantId}.svg" alt="" onerror="this.style.visibility='hidden'">
           <div class="card pd-panel">
@@ -70,7 +72,8 @@
             <h1 style="margin-top:10px">${product.title}</h1>
             <div class="sub">${product.subTitle || ''}</div>
             <div class="price">¥${(product.payValue / 100).toFixed(2)}
-              <small>¥${(product.actualValue / 100).toFixed(2)}</small></div>
+              <small>¥${(product.actualValue / 100).toFixed(2)}</small>
+              ${discount ? `<span class="discount">${discount}折</span>` : ''}</div>
             <div class="rules">${product.rules || ''}</div>
             ${limited ? `
               <div class="seckill-info">

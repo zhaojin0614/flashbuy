@@ -61,6 +61,13 @@ public class PostController {
         return postService.queryPostByUserId(id, current);
     }
 
+    @GetMapping("/of/merchant")
+    public Result queryPostByMerchant(
+            @RequestParam("merchantId") Long merchantId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return postService.queryPostByMerchant(merchantId, current);
+    }
+
     @GetMapping("/of/follow")
     public Result queryPostOfFollow(
             @RequestParam("lastId") Long max, @RequestParam(value = "offset", defaultValue = "0") Integer offset) {

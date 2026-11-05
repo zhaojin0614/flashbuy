@@ -13,61 +13,186 @@
       <h1>限量好物，手慢无 ⚡</h1>
       <p>潮玩手办 / 盲盒 / 演出门票 / 限定模型 —— Redis + Lua 原子预扣，秒级开抢</p>
     </div>
+
+    <div class="index-search">
+      <input id="searchInput" type="text" placeholder="搜索商户名称，如：万物潮玩社" autocomplete="off"
+             oninput="onSearchInput()" onkeydown="if(event.key==='Enter') searchNow()">
+      <button class="btn" onclick="searchNow()">搜索</button>
+    </div>
+
     <div id="typeBar" class="type-bar"></div>
+
+    <div class="filter-bar" id="filterBar">
+      <span class="filter-label">排序</span>
+      <div class="sort-bar" id="sortBar"></div>
+    </div>
+
     <div id="merchantList" class="grid"></div>
+    <div style="text-align:center;margin:10px 0 30px">
+      <button class="btn btn-ghost" id="loadMoreBtn" onclick="loadMore()" style="display:none">加载更多</button>
+    </div>
   </div>
   <script src="/js/axios.min.js"></script>
   <script src="/js/common.js"></script>
   <script>
     renderNav('index');
     loadMe();
+
+    const HZ = { x: 120.149993, y: 30.334229 }; // 与原版一致的杭州演示坐标
     let currentType = null;
-    async function loadTypes() {
-      const r = await axios.get('/merchant-type/list');
-      const bar = document.getElementById('typeBar');
-      r.data.forEach(t => {
-        const chip = document.createElement('div');
-        chip.className = 'type-chip';
-        chip.textContent = t.name;
-        chip.dataset.id = t.id;
-        chip.onclick = () => {
-          currentType = t.id;
-          document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
-          chip.classList.add('active');
-          loadMerchants();
-        };
-        bar.appendChild(chip);
-      });
-      // 默认选中第一个类型
-      if (bar.firstChild) bar.firstChild.click();
+    let page = 1;
+    let keyword = '';
+    let sortBy = 'score';
+    let nearby = false;
+    let loading = false;
+    let hasMore = true;
+    let searchTimer = null;
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
     }
-    async function loadMerchants() {
-      const list = document.getElementById('merchantList');
-      list.innerHTML = '<div class="empty">加载中…</div>';
+
+    function formatDistance(meters) {
+      if (meters == null) return '';
+      return meters < 1000 ? Math.round(meters) + 'm' : (meters / 1000).toFixed(1) + 'km';
+    }
+
+    async function loadTypes() {
       try {
-        const r = await axios.get('/merchant/of/type', { params: { typeId: currentType, current: 1 } });
-        list.innerHTML = '';
-        if (!r.data.length) { list.innerHTML = '<div class="empty">该分类暂无商户</div>'; return; }
-        r.data.forEach(m => {
-          const card = document.createElement('div');
-          card.className = 'card m-card';
-          card.onclick = () => location.href = '/merchant.html?id=' + m.id;
-          card.innerHTML = `
-            <img class="m-cover" src="${firstImg(m.images)}" alt="">
-            <div class="m-body">
-              <div class="m-name">${m.name}</div>
-              <div class="m-meta">
-                <span class="score">★ ${m.score}</span>
-                <span class="sub">${m.area || ''}</span>
-                <span class="sub">月售 ${m.sold}</span>
-              </div>
-            </div>`;
-          list.appendChild(card);
+        const r = await axios.get('/merchant-type/list');
+        const bar = document.getElementById('typeBar');
+        bar.innerHTML = '';
+        r.data.forEach(t => {
+          const chip = document.createElement('div');
+          chip.className = 'type-chip';
+          chip.dataset.id = t.id;
+          chip.innerHTML = `${t.icon ? `<img src="${t.icon}" alt="" onerror="this.style.display='none'">` : ''}<span>${escapeHtml(t.name)}</span>`;
+          chip.onclick = () => {
+            keyword = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterBar').style.display = '';
+            currentType = t.id;
+            document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            loadMerchants(true);
+          };
+          bar.appendChild(chip);
         });
+        if (bar.firstChild) bar.firstChild.click();
       } catch (e) {
-        list.innerHTML = `<div class="empty">${e}</div>`;
+        document.getElementById('merchantList').innerHTML = `<div class="empty">${e}</div>`;
       }
     }
+
+    function renderSortBar() {
+      const options = [['score', '评分'], ['comments', '人气'], ['distance', '附近']];
+      const bar = document.getElementById('sortBar');
+      bar.innerHTML = options.map(([key, label]) =>
+        `<div class="sort-chip ${sortBy === key ? 'active' : ''}" data-sort="${key}" onclick="setSort('${key}')">${label}</div>`
+      ).join('');
+    }
+
+    function setSort(value) {
+      sortBy = value;
+      nearby = value === 'distance';
+      renderSortBar();
+      loadMerchants(true);
+    }
+
+    function onSearchInput() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const value = document.getElementById('searchInput').value.trim();
+        if (value === keyword) return;
+        keyword = value;
+        document.getElementById('filterBar').style.display = keyword ? 'none' : '';
+        loadMerchants(true);
+      }, 300);
+    }
+
+    function searchNow() {
+      clearTimeout(searchTimer);
+      keyword = document.getElementById('searchInput').value.trim();
+      document.getElementById('filterBar').style.display = keyword ? 'none' : '';
+      loadMerchants(true);
+    }
+
+    async function loadMerchants(reset) {
+      if (loading) return;
+      if (reset) {
+        page = 1;
+        hasMore = true;
+        document.getElementById('merchantList').innerHTML = '';
+      }
+      if (!hasMore) return;
+      if (!keyword && currentType == null) return;
+
+      loading = true;
+      const moreBtn = document.getElementById('loadMoreBtn');
+      moreBtn.disabled = true;
+      moreBtn.textContent = '加载中…';
+      try {
+        const url = keyword ? '/merchant/of/name' : '/merchant/of/type';
+        const params = keyword
+          ? { name: keyword, current: page }
+          : { typeId: currentType, current: page, sortBy };
+        if (!keyword && nearby) {
+          params.x = HZ.x;
+          params.y = HZ.y;
+        }
+        const r = await axios.get(url, { params });
+        const rows = r.data || [];
+        renderMerchants(rows);
+        const pageSize = keyword ? 10 : 5;
+        if (rows.length < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+        if (!keyword && currentType != null && rows.length === 0 && page === 1) {
+          document.getElementById('merchantList').innerHTML = '<div class="empty">该分类暂无商户</div>';
+        }
+      } catch (e) {
+        document.getElementById('merchantList').innerHTML = `<div class="empty">${e}</div>`;
+      } finally {
+        loading = false;
+        moreBtn.disabled = false;
+        moreBtn.textContent = '加载更多';
+        moreBtn.style.display = hasMore ? 'inline-flex' : 'none';
+      }
+    }
+
+    function renderMerchants(rows) {
+      const list = document.getElementById('merchantList');
+      rows.forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'card m-card';
+        card.onclick = () => location.href = '/merchant.html?id=' + m.id;
+        const score = ((Number(m.score) || 0) / 10).toFixed(1);
+        const distance = formatDistance(m.distance);
+        card.innerHTML = `
+          <img class="m-cover" src="${firstImg(m.images)}" alt="" onerror="this.style.visibility='hidden'">
+          <div class="m-body">
+            <div class="m-name">${escapeHtml(m.name)}</div>
+            <div class="m-meta">
+              <span class="score">★ ${score}</span>
+              <span class="sub">${m.comments || 0}条评价</span>
+              <span class="sub">￥${m.avgPrice || 0}/人</span>
+              ${distance ? `<span class="sub distance">📍 ${distance}</span>` : ''}
+            </div>
+            <div class="m-address sub">${escapeHtml(m.address || '')}</div>
+          </div>`;
+        list.appendChild(card);
+      });
+    }
+
+    function loadMore() {
+      loadMerchants(false);
+    }
+
+    renderSortBar();
     loadTypes();
   </script>
 </body>

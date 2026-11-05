@@ -188,6 +188,17 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements IP
     }
 
     @Override
+    public Result queryPostByMerchant(Long merchantId, Integer current) {
+        Page<Post> page = query()
+                .eq("merchant_id", merchantId)
+                .orderByDesc("create_time")
+                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        List<Post> records = page.getRecords();
+        enrichPosts(records);
+        return Result.ok(records);
+    }
+
+    @Override
     public Result queryPostOfFollow(Long max, Integer offset) {
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();

@@ -18,5 +18,5 @@ public interface IMerchantService extends IService<Merchant> {
 
     Result update(Merchant merchant);
 
-    Result queryMerchantByType(Integer typeId, Integer current, Double x, Double y);
+    Result queryMerchantByType(Integer typeId, Integer current, Double x, Double y, String sortBy);
 }
