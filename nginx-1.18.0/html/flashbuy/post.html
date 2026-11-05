@@ -10,10 +10,13 @@
   <div id="nav" class="nav"></div>
   <div class="container">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:26px">
-      <div class="section-title" style="margin:0">🔥 热门晒单</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="type-chip active" id="tabHot" onclick="switchMode('hot')">🔥 最热</div>
+        <div class="type-chip" id="tabLatest" onclick="switchMode('latest')">🆕 最新</div>
+      </div>
       <button class="btn" onclick="location.href='/post-edit.html'">✏️ 发布晒单</button>
     </div>
-    <div id="postList"></div>
+    <div id="postList" style="margin-top:14px"></div>
     <div style="text-align:center;margin:10px 0 30px">
       <button class="btn btn-ghost" id="moreBtn" onclick="loadMore()">加载更多</button>
     </div>
@@ -24,6 +27,17 @@
     renderNav('post');
     loadMe();
     let page = 1;
+    let mode = 'hot';   // hot=按点赞数排序的热榜 / latest=按发布时间倒序
+    function switchMode(m) {
+      if (mode === m) return;
+      mode = m;
+      document.getElementById('tabHot').classList.toggle('active', mode === 'hot');
+      document.getElementById('tabLatest').classList.toggle('active', mode === 'latest');
+      page = 1;
+      document.getElementById('moreBtn').textContent = '加载更多';
+      document.getElementById('moreBtn').disabled = false;
+      loadPosts();
+    }
     function escapeHtml(value) {
       return String(value || '').replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -31,13 +45,16 @@
     }
     async function loadPosts() {
       try {
-        const r = await axios.get('/post/hot', { params: { current: page } });
+        const url = mode === 'hot' ? '/post/hot' : '/post/latest';
+        const r = await axios.get(url, { params: { current: page } });
         const list = document.getElementById('postList');
         if (page === 1) list.innerHTML = '';
         if (!r.data.length) {
           document.getElementById('moreBtn').textContent = '没有更多了';
           document.getElementById('moreBtn').disabled = true;
-          if (page === 1) list.innerHTML = '<div class="empty">还没有晒单，快来抢购第一单吧</div>';
+          if (page === 1) list.innerHTML = mode === 'hot'
+            ? '<div class="empty">还没有晒单，快来抢购第一单吧</div>'
+            : '<div class="empty">还没有新晒单</div>';
           return;
         }
         r.data.forEach(p => {

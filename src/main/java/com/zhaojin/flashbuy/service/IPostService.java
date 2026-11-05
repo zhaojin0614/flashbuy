@@ -13,6 +13,11 @@ public interface IPostService extends IService<Post> {
 
     Result queryHotPost(Integer current);
 
+    /**
+     * 最新晒单（按 id 倒序 = 发布时间倒序，主键聚簇索引免 filesort）
+     */
+    Result queryLatestPost(Integer current);
+
     Result queryPostById(Long id);
 
     Result likePost(Long id);

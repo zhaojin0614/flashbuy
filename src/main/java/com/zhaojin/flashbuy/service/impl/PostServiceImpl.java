@@ -68,6 +68,18 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements IP
     }
 
     @Override
+    public Result queryLatestPost(Integer current) {
+        // 最新晒单：按 id 倒序。id 为主键聚簇索引且单调递增，
+        // 与 create_time 语义等价（同秒发布以 id 定先后），且排序零 filesort
+        Page<Post> page = query()
+                .orderByDesc("id")
+                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        List<Post> records = page.getRecords();
+        enrichPosts(records);
+        return Result.ok(records);
+    }
+
+    @Override
     public Result queryPostById(Long id) {
         // 1.查询post
         Post post = getById(id);

@@ -41,6 +41,14 @@ public class PostController {
         return postService.queryHotPost(current);
     }
 
+    /**
+     * 最新晒单（按发布时间倒序）
+     */
+    @GetMapping("/latest")
+    public Result queryLatestPost(@RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return postService.queryLatestPost(current);
+    }
+
     @GetMapping("/{id}")
     public Result queryPostById(@PathVariable("id") Long id) {
         return postService.queryPostById(id);

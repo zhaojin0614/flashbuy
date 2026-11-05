@@ -29,22 +29,25 @@
       <div class="link-out" onclick="doLogout()">退出登录</div>
     </div>
     <div class="card" style="margin-top:18px;padding:22px">
-      <div class="section-title" style="margin:0 0 10px">我的订单</div>
-      <div id="orderList"><div class="sub">加载中…</div></div>
-    </div>
-    <div class="card" style="margin-top:18px;padding:22px">
-      <div class="section-title" style="margin:0 0 10px;display:flex;justify-content:space-between;align-items:center">
-        <span>我的晒单</span>
-        <a href="/post-edit.html" style="font-size:13px;color:var(--primary)">+ 发布晒单</a>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
+        <div class="type-chip active" id="ctOrders" onclick="switchCenter('orders')">📦 我的订单</div>
+        <div class="type-chip" id="ctPosts" onclick="switchCenter('posts')">📝 我的晒单</div>
+        <div class="type-chip" id="ctFeed" onclick="switchCenter('feed')">🔔 关注动态</div>
       </div>
-      <div id="myPostList"><div class="sub">加载中…</div></div>
-    </div>
-
-    <div class="card" style="margin-top:18px;padding:22px">
-      <div class="section-title" style="margin:0 0 10px">关注动态</div>
-      <div id="followFeed"><div class="sub">加载中…</div></div>
-      <div style="text-align:center;margin-top:8px">
-        <button class="btn btn-ghost" id="feedMore" onclick="loadFollowFeed(false)" style="display:none">加载更多</button>
+      <div id="paneOrders">
+        <div id="orderList"><div class="sub">加载中…</div></div>
+      </div>
+      <div id="panePosts" style="display:none">
+        <div style="text-align:right;margin-bottom:6px">
+          <a href="/post-edit.html" style="font-size:13px;color:var(--primary)">+ 发布晒单</a>
+        </div>
+        <div id="myPostList"><div class="sub">加载中…</div></div>
+      </div>
+      <div id="paneFeed" style="display:none">
+        <div id="followFeed"><div class="sub">加载中…</div></div>
+        <div style="text-align:center;margin-top:8px">
+          <button class="btn btn-ghost" id="feedMore" onclick="loadFollowFeed(false)" style="display:none">加载更多</button>
+        </div>
       </div>
     </div>
   </div>
@@ -233,10 +236,23 @@
       toast('已退出登录', 'success');
       setTimeout(() => location.href = '/index.html', 500);
     }
+    // 个人中心 Tab：懒加载——首次切到某 Tab 才拉取数据，切回保留已加载内容
+    const loadedPanes = { orders: false, posts: false, feed: false };
+    function switchCenter(tab) {
+      ['orders', 'posts', 'feed'].forEach(t => {
+        document.getElementById('pane' + t[0].toUpperCase() + t.slice(1)).style.display =
+          t === tab ? 'block' : 'none';
+        document.getElementById('ct' + t[0].toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
+      });
+      if (!loadedPanes[tab]) {
+        loadedPanes[tab] = true;
+        if (tab === 'orders') loadOrders();
+        if (tab === 'posts') loadMyPosts();
+        if (tab === 'feed') loadFollowFeed(true);
+      }
+    }
     loadProfile();
-    loadOrders();
-    loadMyPosts();
-    loadFollowFeed(true);
+    switchCenter('orders');
   </script>
 </body>
 </html>
