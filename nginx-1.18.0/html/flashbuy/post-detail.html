@@ -10,6 +10,9 @@
     .d-author img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
     .d-author .name { font-weight: 700; font-size: 15px; }
     .d-author .time { font-size: 12px; color: var(--text-sub); }
+    .author-info { display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; }
+    .author-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .author-actions .btn { padding: 7px 16px; font-size: 13px; letter-spacing: 0; }
     .d-title { font-size: 20px; font-weight: 800; padding: 0 16px; margin-bottom: 10px; }
     .d-imgs { padding: 0 16px; display: flex; gap: 8px; flex-wrap: wrap; }
     .d-imgs img { width: calc(50% - 4px); border-radius: 10px; object-fit: cover; max-height: 240px; }
@@ -25,6 +28,13 @@
     .comment-item .c-time { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
     .back-link { font-size: 14px; color: var(--text-sub); cursor: pointer; }
     .back-link:hover { color: var(--primary); }
+    .likes-board { border-top: 1px solid #f1eef9; padding: 14px 16px 4px; }
+    .likes-title { font-size: 13px; color: var(--text-sub); margin-bottom: 10px; }
+    .likes-list { display: flex; gap: 14px; flex-wrap: wrap; }
+    .like-user { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; width: 56px; }
+    .like-user img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #eee; }
+    .like-user span { font-size: 11px; color: var(--text-sub); max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .like-empty { font-size: 13px; color: var(--text-sub); padding-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -47,40 +57,116 @@
   <script src="/js/common.js"></script>
   <script>
     renderNav('post');
-    loadMe();
     const postId = new URLSearchParams(location.search).get('id');
     let cPage = 1;
+    let postData = null;
+    let myId = null;
+    let followed = false;
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function goUser(id) {
+      if (id) location.href = '/user.html?id=' + id;
+    }
+
     async function loadPost() {
       try {
         const r = await axios.get('/post/' + postId);
         const p = r.data;
+        postData = p;
         document.title = (p.title || '晒单详情') + ' - 闪购 FlashBuy';
         document.getElementById('postWrap').innerHTML = `
           <div class="card">
             <div class="d-author">
-              <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
-              <div>
-                <div class="name">${p.name || '闪友'}</div>
-                <div class="time">${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+              <div class="author-info" onclick="goUser(${p.userId})">
+                <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+                <div>
+                  <div class="name">${escapeHtml(p.name || '闪友')}</div>
+                  <div class="time">${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+                </div>
               </div>
-              <button class="like-btn ${p.isLike ? 'liked' : ''}" style="margin-left:auto;font-size:15px"
-                      id="likeBtn" onclick="toggleLike()">${p.isLike ? '❤' : '🤍'} <span>${p.liked || 0}</span></button>
+              <div class="author-actions">
+                <button class="btn btn-outline" id="followBtn" style="display:none" onclick="toggleFollow()">+ 关注</button>
+                <button class="like-btn ${p.isLike ? 'liked' : ''}" style="font-size:15px"
+                        id="likeBtn" onclick="toggleLike()">${p.isLike ? '❤' : '🤍'} <span>${p.liked || 0}</span></button>
+              </div>
             </div>
-            <div class="d-title">${p.title || ''}</div>
+            <div class="d-title">${escapeHtml(p.title || '')}</div>
             <div class="d-imgs">${(p.images || '').split(',').filter(Boolean)
                 .map(src => `<img src="${src}" alt="" onerror="this.style.display='none'">`).join('')}</div>
-            <div class="d-content">${p.content || ''}</div>
+            <div class="d-content">${escapeHtml(p.content || '')}</div>
             <div class="d-foot">
               <span class="sub">💬 ${(p.comments || 0)} 条评论</span>
               ${p.merchantId ? `<span class="sub" onclick="location.href='/merchant.html?id=${p.merchantId}'"
-                    style="cursor:pointer">🏬 ${p.merchantName || '查看相关商户'}</span>` : ''}
+                    style="cursor:pointer">🏬 ${escapeHtml(p.merchantName || '查看相关商户')}</span>` : ''}
             </div>
+            <div class="likes-board" id="likesBoard"></div>
           </div>`;
         document.getElementById('cTitle').textContent = `评论（${p.comments || 0}）`;
+        loadLikes();
+        loadFollowState();
       } catch (e) {
         document.getElementById('postWrap').innerHTML = `<div class="empty">${e}</div>`;
       }
     }
+
+    async function loadLikes() {
+      const box = document.getElementById('likesBoard');
+      if (!box || !postData) return;
+      try {
+        const r = await axios.get('/post/likes/' + postId);
+        const list = r.data || [];
+        box.innerHTML = `<div class="likes-title">点赞排行榜 · ${postData.liked || 0} 人点赞</div>` +
+          (list.length
+            ? `<div class="likes-list">${list.map(u => `
+                <div class="like-user" onclick="goUser(${u.id})" title="${escapeHtml(u.nickName || '')}">
+                  <img src="${u.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+                  <span>${escapeHtml(u.nickName || '闪友')}</span>
+                </div>`).join('')}</div>`
+            : '<div class="like-empty">还没有人点赞，来抢沙发</div>');
+      } catch (e) {
+        box.innerHTML = '';
+      }
+    }
+
+    async function loadFollowState() {
+      const btn = document.getElementById('followBtn');
+      if (!btn || !postData) return;
+      if (!isLoggedIn() || String(postData.userId) === String(myId)) {
+        btn.style.display = 'none';
+        return;
+      }
+      try {
+        const r = await axios.get('/follow/or/not/' + postData.userId);
+        followed = !!r.data;
+        btn.style.display = 'inline-flex';
+        updateFollowBtn();
+      } catch (e) { /* 静默 */ }
+    }
+
+    function updateFollowBtn() {
+      const btn = document.getElementById('followBtn');
+      if (!btn) return;
+      btn.textContent = followed ? '已关注' : '+ 关注';
+      btn.className = 'btn ' + (followed ? 'btn-ghost' : 'btn-outline');
+    }
+
+    async function toggleFollow() {
+      if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
+      const btn = document.getElementById('followBtn');
+      btn.disabled = true;
+      try {
+        await axios.put('/follow/' + postData.userId + '/' + (!followed));
+        followed = !followed;
+        updateFollowBtn();
+        toast(followed ? '已关注' : '已取消关注', 'success');
+      } catch (e) { toast(e, 'error'); }
+      finally { btn.disabled = false; }
+    }
+
     async function toggleLike() {
       if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
       try {
@@ -90,8 +176,11 @@
         const num = btn.querySelector('span');
         num.textContent = +num.textContent + (liked ? 1 : -1);
         btn.firstChild.textContent = liked ? '❤ ' : '🤍 ';
+        if (postData) postData.liked = Math.max(0, (postData.liked || 0) + (liked ? 1 : -1));
+        loadLikes();
       } catch (e) { toast(e, 'error'); }
     }
+
     async function loadComments() {
       try {
         const r = await axios.get('/post-comments/of/' + postId, { params: { current: cPage } });
@@ -108,8 +197,8 @@
           el.innerHTML = `
             <img src="${c.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
             <div>
-              <div class="c-name">${c.name || '闪友'}</div>
-              <div class="c-content">${c.content || ''}</div>
+              <div class="c-name">${escapeHtml(c.name || '闪友')}</div>
+              <div class="c-content">${escapeHtml(c.content || '')}</div>
               <div class="c-time">${(c.createTime || '').replace('T', ' ').slice(0, 16)}</div>
             </div>`;
           list.appendChild(el);
@@ -119,6 +208,7 @@
         document.getElementById('commentList').innerHTML = `<div class="empty">${e}</div>`;
       }
     }
+
     async function sendComment() {
       if (!isLoggedIn()) { toast('请先登录', 'error'); return goLogin(); }
       const input = document.getElementById('cInput');
@@ -133,7 +223,11 @@
         loadPost();  // 刷新评论计数
       } catch (e) { toast(e, 'error'); }
     }
-    loadPost();
+
+    loadMe().then(me => {
+      myId = me ? String(me.id) : null;
+      loadPost();
+    });
     loadComments();
   </script>
 </body>

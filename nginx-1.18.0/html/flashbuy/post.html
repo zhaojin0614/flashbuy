@@ -44,7 +44,7 @@
           const card = document.createElement('div');
           card.className = 'card post-card';
           card.innerHTML = `
-            <div class="post-head">
+            <div class="post-head" onclick="location.href='/user.html?id=${p.userId}'" style="cursor:pointer">
               <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
               <div>
                 <div class="name">${p.name || '闪友'}</div>

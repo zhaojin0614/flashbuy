@@ -61,6 +61,7 @@
           const me = await axios.get('/user/me');
           sessionStorage.setItem('nick', me.data.nickName || me.data.nick || '我');
           sessionStorage.setItem('avatar', me.data.icon || '/imgs/icons/user.png');
+          sessionStorage.setItem('uid', me.data.id);
         } catch (e) { /* 忽略 */ }
         toast('登录成功', 'success');
         setTimeout(() => location.href = '/index.html', 600);

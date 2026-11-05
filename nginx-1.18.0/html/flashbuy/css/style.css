@@ -233,6 +233,22 @@ img { display: block; }
 .link-out { color: var(--text-sub); font-size: 14px; cursor: pointer; margin-left: auto; }
 .link-out:hover { color: var(--danger); }
 
+/* ===== 用户主页 / 关注 ===== */
+.user-hero { display: flex; align-items: center; gap: 18px; padding: 24px; margin-top: 22px; }
+.user-hero > img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: #eee; flex-shrink: 0; }
+.user-main { flex: 1; min-width: 0; }
+.user-main h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+.user-stats { display: flex; gap: 18px; margin-top: 8px; font-size: 13px; color: var(--text-sub); }
+.user-stats b { color: var(--text); }
+.common-follows { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+.common-follow {
+  display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px;
+  border-radius: 999px; background: #fff; box-shadow: var(--shadow); cursor: pointer;
+}
+.common-follow:hover { transform: translateY(-1px); }
+.common-follow img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #eee; }
+.common-follow .name { font-size: 14px; font-weight: 600; }
+
 @media (max-width: 860px) {
   .grid { grid-template-columns: 1fr; }
   .pd-wrap { flex-direction: column; }

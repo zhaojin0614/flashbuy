@@ -36,4 +36,12 @@ public class FollowController {
     public Result followCommons(@PathVariable("id") Long id) {
         return followService.followCommons(id);
     }
+
+    /**
+     * 用户主页的粉丝数 / 关注数（从 tb_follow 实时统计）
+     */
+    @GetMapping("/count/{id}")
+    public Result followCount(@PathVariable("id") Long id) {
+        return followService.followCount(id);
+    }
 }

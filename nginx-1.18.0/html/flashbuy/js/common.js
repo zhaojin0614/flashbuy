@@ -86,6 +86,8 @@ async function loadMe() {
     const r = await axios.get('/user/me');
     sessionStorage.setItem('nick', r.data.nickName || r.data.nick || '我');
     sessionStorage.setItem('avatar', r.data.icon || '/imgs/icons/user.png');
+    sessionStorage.setItem('uid', r.data.id);
+    return r.data;
   } catch (e) { /* 静默 */ }
 }
 

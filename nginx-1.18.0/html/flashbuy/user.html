@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户主页 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div id="userHero"></div>
+    <div class="section-title">TA 的晒单</div>
+    <div id="userPosts"></div>
+    <div style="text-align:center;margin:10px 0 24px">
+      <button class="btn btn-ghost" id="moreBtn" onclick="loadMore()">加载更多</button>
+    </div>
+    <div class="section-title">共同关注</div>
+    <div id="commonFollows" class="common-follows"></div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('post');
+    const targetId = new URLSearchParams(location.search).get('id');
+    let page = 1;
+    let followed = false;
+    let targetUser = null;
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    async function init() {
+      if (!isLoggedIn()) return goLogin();
+      if (!targetId) {
+        document.getElementById('userHero').innerHTML = '<div class="empty">用户不存在</div>';
+        return;
+      }
+      const me = await loadMe();
+      if (me && String(me.id) === String(targetId)) {
+        location.replace('/profile.html');
+        return;
+      }
+      await loadUser();
+      if (!targetUser) return;
+      loadPosts();
+      loadCommonFollows();
+      loadFollowState();
+      loadFollowStats();
+    }
+
+    async function loadUser() {
+      try {
+        const [uR, iR] = await Promise.allSettled([
+          axios.get('/user/' + targetId),
+          axios.get('/user/info/' + targetId)
+        ]);
+        targetUser = uR.status === 'fulfilled' ? uR.value.data : null;
+        if (!targetUser) {
+          document.getElementById('userHero').innerHTML = '<div class="empty">用户不存在</div>';
+          return;
+        }
+        const info = iR.status === 'fulfilled' ? iR.value.data : null;
+        document.title = (targetUser.nickName || '闪友') + ' 的主页 - 闪购 FlashBuy';
+        const intro = info && info.introduce ? info.introduce : '这个人很懒，还没有留下简介';
+        const city = info && info.city ? info.city : '';
+        document.getElementById('userHero').innerHTML = `
+          <div class="card user-hero">
+            <img src="${targetUser.icon || '/imgs/icons/user.png'}" alt=""
+                 onerror="this.src='/imgs/icons/user.png'">
+            <div class="user-main">
+              <h1>${escapeHtml(targetUser.nickName || '闪友')}</h1>
+              <div class="sub">${escapeHtml(intro)}${city ? ' · ' + escapeHtml(city) : ''}</div>
+              <div class="user-stats">
+                <span>粉丝 <b id="fansNum">0</b></span>
+                <span>关注 <b id="followeeNum">0</b></span>
+              </div>
+            </div>
+            <button class="btn" id="followBtn" style="display:none" onclick="toggleFollow()">+ 关注</button>
+          </div>`;
+      } catch (e) {
+        document.getElementById('userHero').innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+
+    async function loadPosts() {
+      const box = document.getElementById('userPosts');
+      try {
+        const r = await axios.get('/post/of/user', { params: { id: targetId, current: page } });
+        if (page === 1) box.innerHTML = '';
+        if (!r.data.length) {
+          document.getElementById('moreBtn').textContent = page === 1 ? '还没有发布晒单' : '没有更多了';
+          document.getElementById('moreBtn').disabled = true;
+          if (page === 1) box.innerHTML = '<div class="empty">TA 还没有发布晒单</div>';
+          return;
+        }
+        r.data.forEach(p => {
+          const imgs = (p.images || '').split(',').filter(Boolean);
+          const card = document.createElement('div');
+          card.className = 'card post-card';
+          card.style.cursor = 'pointer';
+          card.onclick = () => location.href = '/post-detail.html?id=' + p.id;
+          card.innerHTML = `
+            <div class="post-head">
+              <img src="${p.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+              <div>
+                <div class="name">${escapeHtml(p.name || '闪友')}</div>
+                <div class="sub">${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+              </div>
+            </div>
+            <div class="post-title">${escapeHtml(p.title || '')}</div>
+            ${p.merchantName ? `<div class="post-merchant">🏬 ${escapeHtml(p.merchantName)}</div>` : ''}
+            ${imgs.length ? `<div class="post-imgs">${imgs.slice(0, 4)
+                .map(src => `<img src="${src}" alt="" onerror="this.style.display='none'">`).join('')}</div>` : ''}
+            <div class="post-foot">
+              <span class="sub">❤ ${p.liked || 0}</span>
+              <span class="sub">💬 ${p.comments || 0} 评论</span>
+            </div>`;
+          box.appendChild(card);
+        });
+        if (r.data.length < 10) {
+          document.getElementById('moreBtn').textContent = '没有更多了';
+          document.getElementById('moreBtn').disabled = true;
+        } else {
+          page++;
+        }
+      } catch (e) {
+        box.innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+
+    function loadMore() {
+      loadPosts();
+    }
+
+    async function loadCommonFollows() {
+      const box = document.getElementById('commonFollows');
+      try {
+        const r = await axios.get('/follow/common/' + targetId);
+        if (!r.data.length) {
+          box.innerHTML = '<div class="sub">还没有共同关注</div>';
+          return;
+        }
+        box.innerHTML = r.data.map(u => `
+          <div class="common-follow" onclick="location.href='/user.html?id=${u.id}'">
+            <img src="${u.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+            <div class="name">${escapeHtml(u.nickName || '闪友')}</div>
+          </div>`).join('');
+      } catch (e) {
+        box.innerHTML = `<div class="sub">${e}</div>`;
+      }
+    }
+
+    async function loadFollowState() {
+      const btn = document.getElementById('followBtn');
+      try {
+        const r = await axios.get('/follow/or/not/' + targetId);
+        followed = !!r.data;
+        btn.style.display = 'inline-flex';
+        updateFollowBtn();
+      } catch (e) { /* 静默 */ }
+    }
+
+    async function loadFollowStats() {
+      try {
+        const r = await axios.get('/follow/count/' + targetId);
+        document.getElementById('fansNum').textContent = r.data.fans || 0;
+        document.getElementById('followeeNum').textContent = r.data.followee || 0;
+      } catch (e) { /* 静默 */ }
+    }
+
+    function updateFollowBtn() {
+      const btn = document.getElementById('followBtn');
+      if (!btn) return;
+      btn.textContent = followed ? '已关注' : '+ 关注';
+      btn.className = 'btn ' + (followed ? 'btn-ghost' : '');
+    }
+
+    async function toggleFollow() {
+      const btn = document.getElementById('followBtn');
+      btn.disabled = true;
+      try {
+        await axios.put('/follow/' + targetId + '/' + (!followed));
+        followed = !followed;
+        updateFollowBtn();
+        toast(followed ? '已关注' : '已取消关注', 'success');
+        loadCommonFollows();
+        loadFollowStats();
+      } catch (e) { toast(e, 'error'); }
+      finally { btn.disabled = false; }
+    }
+
+    init();
+  </script>
+</body>
+</html>
