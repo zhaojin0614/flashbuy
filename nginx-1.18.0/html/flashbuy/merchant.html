@@ -29,6 +29,25 @@
     renderNav('index');
     loadMe();
     const merchantId = new URLSearchParams(location.search).get('id');
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function formatTime(value) {
+      if (!value) return '-';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '-';
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+    function seckillPhase(p) {
+      const now = Date.now();
+      const begin = new Date(p.beginTime).getTime();
+      const end = new Date(p.endTime).getTime();
+      if (!Number.isNaN(begin) && now < begin) return 'notStarted';
+      if (!Number.isNaN(end) && now > end) return 'ended';
+      if (Number(p.stock || 0) <= 0) return 'soldOut';
+      return 'active';
+    }
+    const PHASE_LABEL = { active: '抢购中', notStarted: '未开始', ended: '已结束', soldOut: '已售罄' };
+
     async function loadMerchant() {
       const r = await axios.get('/merchant/' + merchantId);
       const m = r.data;
@@ -49,11 +68,16 @@
           const card = document.createElement('div');
           card.className = 'card p-card';
           card.innerHTML = `
-            <img class="p-thumb" src="/imgs/shops/${merchantId}.jpg" alt="" onerror="this.style.visibility='hidden'">
+            <img class="p-thumb" src="/imgs/shops/${merchantId}.svg" alt="" onerror="this.style.visibility='hidden'">
             <div class="p-info">
               <div><span class="badge-limited">${p.type === 1 ? '限量抢购' : '常规'}</span></div>
               <div class="p-title" onclick="location.href='/product.html?id=${p.id}&merchantId=${merchantId}'">${p.title}</div>
               <div class="sub">${p.subTitle || ''}</div>
+              ${p.type === 1 ? `<div class="p-seckill-meta">
+                <span class="stock">剩余 <b>${Number(p.stock) || 0}</b> 件</span>
+                <span>${formatTime(p.beginTime)} ~ ${formatTime(p.endTime)}</span>
+                <span class="phase ${seckillPhase(p)}">${PHASE_LABEL[seckillPhase(p)]}</span>
+              </div>` : ''}
               <div class="p-actions">
                 <span class="price">¥${(p.payValue / 100).toFixed(2)}
                   <small>¥${(p.actualValue / 100).toFixed(2)}</small></span>
