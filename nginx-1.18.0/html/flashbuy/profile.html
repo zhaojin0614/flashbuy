@@ -11,10 +11,15 @@
   <div class="container">
     <div class="profile-head">
       <img id="avatar" src="/imgs/icons/user.png" alt="">
-      <div>
+      <div class="profile-main">
         <h1 id="nick">加载中…</h1>
-        <div style="opacity:.85;font-size:13px;margin-top:4px" id="phone"></div>
+        <div class="sub" id="intro" style="opacity:.85;font-size:13px;margin-top:4px"></div>
+        <div class="user-stats" style="color:rgba(255,255,255,.92)">
+          <span onclick="goFollowList('fans')">粉丝 <b id="fansNum">0</b></span>
+          <span onclick="goFollowList('followees')">关注 <b id="followeeNum">0</b></span>
+        </div>
       </div>
+      <button class="btn btn-ghost" style="margin-left:auto" onclick="location.href='/profile-edit.html'">编辑资料</button>
     </div>
     <div class="card sign-card">
       <div class="sign-num"><b id="monthNum">-</b><span>本月累计</span></div>
@@ -34,14 +39,34 @@
       </div>
       <div id="myPostList"><div class="sub">加载中…</div></div>
     </div>
+
+    <div class="card" style="margin-top:18px;padding:22px">
+      <div class="section-title" style="margin:0 0 10px">关注动态</div>
+      <div id="followFeed"><div class="sub">加载中…</div></div>
+      <div style="text-align:center;margin-top:8px">
+        <button class="btn btn-ghost" id="feedMore" onclick="loadFollowFeed(false)" style="display:none">加载更多</button>
+      </div>
+    </div>
   </div>
   <script src="/js/axios.min.js"></script>
   <script src="/js/common.js"></script>
   <script>
     renderNav('');
     if (!isLoggedIn()) goLogin();
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function goFollowList(type) {
+      const uid = sessionStorage.getItem('uid');
+      if (!uid) return toast('请先登录', 'error');
+      location.href = '/follow-list.html?id=' + uid + '&type=' + type;
+    }
+
     async function loadProfile() {
-      // 并行拉取用户信息、连续签到、本月累计，避免串行等待
       const [meR, cntR, monR] = await Promise.allSettled([
         axios.get('/user/me'),
         axios.get('/user/sign/count'),
@@ -51,10 +76,23 @@
         const me = meR.value.data;
         document.getElementById('nick').textContent = me.nickName || me.nick || '闪友';
         document.getElementById('avatar').src = me.icon || '/imgs/icons/user.png';
+        sessionStorage.setItem('uid', me.id);
+
+        const [infoR, countR] = await Promise.allSettled([
+          axios.get('/user/info/' + me.id),
+          axios.get('/follow/count/' + me.id)
+        ]);
+        const info = infoR.status === 'fulfilled' ? infoR.value.data : null;
+        const intro = info && info.introduce ? info.introduce : '还没有个人简介，点击右侧“编辑资料”补充';
+        const city = info && info.city ? ' · ' + info.city : '';
+        document.getElementById('intro').textContent = intro + city;
+        if (countR.status === 'fulfilled' && countR.value.data) {
+          document.getElementById('fansNum').textContent = countR.value.data.fans || 0;
+          document.getElementById('followeeNum').textContent = countR.value.data.followee || 0;
+        }
       }
       document.getElementById('monthNum').textContent =
         monR.status === 'fulfilled' ? (monR.value.data || 0) : '-';
-      // /user/sign/count 返回连续签到天数；语义上 count>0 ⟺ 今天已签到
       updateSignState(cntR.status === 'fulfilled' ? (cntR.value.data || 0) : null);
     }
     async function loadOrders() {
@@ -96,8 +134,8 @@
               ${imgs.length ? `<img src="${imgs[0]}" style="width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0"
                     onerror="this.style.display='none'">` : ''}
               <div style="flex:1;min-width:0">
-                <div style="font-size:14px;font-weight:600">${p.title || ''}</div>
-                <div class="sub">${p.merchantName || '未关联商户'} · ${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+                <div style="font-size:14px;font-weight:600">${escapeHtml(p.title || '')}</div>
+                <div class="sub">${escapeHtml(p.merchantName || '未关联商户')} · ${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
                 <div class="sub">❤ ${p.liked || 0} · 💬 ${p.comments || 0}</div>
               </div>
             </div>`;
@@ -106,6 +144,64 @@
         document.getElementById('myPostList').innerHTML = `<div class="sub">${e}</div>`;
       }
     }
+    let feedMinTime = Date.now() + 1;
+    let feedOffset = 0;
+    let feedLoading = false;
+    let feedHasMore = true;
+
+    async function loadFollowFeed(reset) {
+      if (feedLoading) return;
+      const box = document.getElementById('followFeed');
+      if (reset) {
+        feedMinTime = Date.now() + 1;
+        feedOffset = 0;
+        feedHasMore = true;
+        box.innerHTML = '';
+      }
+      if (!feedHasMore) return;
+      feedLoading = true;
+      const moreBtn = document.getElementById('feedMore');
+      moreBtn.disabled = true;
+      moreBtn.textContent = '加载中…';
+      try {
+        const r = await axios.get('/post/of/follow', {
+          params: { lastId: feedMinTime, offset: feedOffset }
+        });
+        const data = r.data;
+        const list = data && data.list ? data.list : [];
+        if (!list.length) {
+          feedHasMore = false;
+          if (reset) box.innerHTML = '<div class="sub">关注一些人后，这里会出现他们的晒单</div>';
+        } else {
+          if (reset) box.innerHTML = '';
+          box.innerHTML += list.map(p => {
+            const imgs = (p.images || '').split(',').filter(Boolean);
+            return `
+              <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f1eef9;cursor:pointer"
+                   onclick="location.href='/post-detail.html?id=${p.id}'">
+                ${imgs.length ? `<img src="${imgs[0]}" style="width:58px;height:58px;border-radius:9px;object-fit:cover;flex-shrink:0"
+                      onerror="this.style.display='none'">` : ''}
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;font-weight:600">${escapeHtml(p.title || '')}</div>
+                  <div class="sub">${escapeHtml(p.name || '闪友')} · ${escapeHtml(p.merchantName || '')} · ${(p.createTime || '').replace('T', ' ').slice(0, 16)}</div>
+                  <div class="sub">❤ ${p.liked || 0} · 💬 ${p.comments || 0}</div>
+                </div>
+              </div>`;
+          }).join('');
+          feedMinTime = data.minTime;
+          feedOffset = data.offset;
+          feedHasMore = list.length === 2;
+        }
+      } catch (e) {
+        if (reset) box.innerHTML = `<div class="sub">${e}</div>`;
+      } finally {
+        feedLoading = false;
+        moreBtn.disabled = false;
+        moreBtn.textContent = '加载更多';
+        moreBtn.style.display = feedHasMore ? 'inline-flex' : 'none';
+      }
+    }
+
     function updateSignState(count) {
       document.getElementById('streakNum').textContent = count === null ? '-' : count;
       const signed = count !== null && count > 0;
@@ -140,6 +236,7 @@
     loadProfile();
     loadOrders();
     loadMyPosts();
+    loadFollowFeed(true);
   </script>
 </body>
 </html>

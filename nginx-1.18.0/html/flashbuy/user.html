@@ -75,8 +75,8 @@
               <h1>${escapeHtml(targetUser.nickName || '闪友')}</h1>
               <div class="sub">${escapeHtml(intro)}${city ? ' · ' + escapeHtml(city) : ''}</div>
               <div class="user-stats">
-                <span>粉丝 <b id="fansNum">0</b></span>
-                <span>关注 <b id="followeeNum">0</b></span>
+                <span onclick="location.href='/follow-list.html?id=${targetId}&type=fans'">粉丝 <b id="fansNum">0</b></span>
+                <span onclick="location.href='/follow-list.html?id=${targetId}&type=followees'">关注 <b id="followeeNum">0</b></span>
               </div>
             </div>
             <button class="btn" id="followBtn" style="display:none" onclick="toggleFollow()">+ 关注</button>

@@ -4,12 +4,16 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.flashbuy.dto.LoginFormDTO;
 import com.flashbuy.dto.Result;
 import com.flashbuy.dto.UserDTO;
+import com.flashbuy.dto.UserProfileDTO;
 import com.flashbuy.entity.User;
+import com.flashbuy.entity.UserInfo;
 import com.flashbuy.mapper.UserMapper;
+import com.flashbuy.service.IUserInfoService;
 import com.flashbuy.service.IUserService;
 import com.flashbuy.utils.JwtUtil;
 import com.flashbuy.utils.RateLimiter;
@@ -21,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpSession;
@@ -56,6 +61,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Resource
     private RateLimiter rateLimiter;
+
+    @Resource
+    private IUserInfoService userInfoService;
 
     @Override
     public Result sendCode(String phone, HttpSession session) {
@@ -216,5 +224,42 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         Long count = stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Long>) con ->
                 con.stringCommands().bitCount(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         return Result.ok(count == null ? 0 : count);
+    }
+
+    @Override
+    @Transactional
+    public Result updateProfile(UserProfileDTO dto) {
+        Long userId = UserHolder.getUser().getId();
+        User user = getById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        boolean userChanged = false;
+        if (StrUtil.isNotBlank(dto.getNickName()) && !dto.getNickName().equals(user.getNickName())) {
+            user.setNickName(dto.getNickName());
+            userChanged = true;
+        }
+        if (userChanged) {
+            updateById(user);
+        }
+
+        UserInfo info = userInfoService.getById(userId);
+        if (info == null) {
+            info = new UserInfo().setUserId(userId);
+        }
+        if (dto.getIntroduce() != null) {
+            info.setIntroduce(dto.getIntroduce());
+        }
+        if (dto.getCity() != null) {
+            info.setCity(dto.getCity());
+        }
+        if (dto.getGender() != null) {
+            info.setGender(dto.getGender());
+        }
+        if (dto.getBirthday() != null) {
+            info.setBirthday(dto.getBirthday());
+        }
+        userInfoService.saveOrUpdate(info);
+        return Result.ok();
     }
 }

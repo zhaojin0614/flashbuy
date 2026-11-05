@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>关注与粉丝 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="section-title" id="pageTitle">关注与粉丝</div>
+    <div id="userList"></div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('');
+    if (!isLoggedIn()) goLogin();
+    const params = new URLSearchParams(location.search);
+    const type = params.get('type') === 'fans' ? 'fans' : 'followees';
+    const id = params.get('id') || sessionStorage.getItem('uid');
+    const label = type === 'fans' ? '粉丝' : '关注';
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    async function loadList() {
+      const box = document.getElementById('userList');
+      document.getElementById('pageTitle').textContent = label;
+      try {
+        const r = await axios.get('/follow/' + type + '/' + id);
+        if (!r.data.length) {
+          box.innerHTML = `<div class="empty">还没有${label}</div>`;
+          return;
+        }
+        box.innerHTML = r.data.map(u => `
+          <div class="card follow-user" onclick="location.href='/user.html?id=${u.id}'">
+            <img src="${u.icon || '/imgs/icons/user.png'}" alt="" onerror="this.src='/imgs/icons/user.png'">
+            <div class="name">${escapeHtml(u.nickName || '闪友')}</div>
+            <span class="sub">进入主页 →</span>
+          </div>`).join('');
+      } catch (e) {
+        box.innerHTML = `<div class="empty">${e}</div>`;
+      }
+    }
+
+    loadList();
+  </script>
+</body>
+</html>

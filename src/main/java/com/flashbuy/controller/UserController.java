@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import com.flashbuy.dto.LoginFormDTO;
 import com.flashbuy.dto.Result;
 import com.flashbuy.dto.UserDTO;
+import com.flashbuy.dto.UserProfileDTO;
 import com.flashbuy.entity.User;
 import com.flashbuy.entity.UserInfo;
 import com.flashbuy.service.IUserInfoService;
@@ -107,9 +108,24 @@ public class UserController {
 
     @GetMapping("/me")
     public Result me(){
-        // 获取当前登录的用户并返回
-        UserDTO userDTO= UserHolder.getUser();
-        return Result.ok(userDTO);
+        // 以数据库为准返回当前用户，保证资料修改后昵称/头像立即生效
+        UserDTO current = UserHolder.getUser();
+        if (current == null) {
+            return Result.ok();
+        }
+        User user = userService.getById(current.getId());
+        if (user == null) {
+            return Result.ok(current);
+        }
+        return Result.ok(BeanUtil.copyProperties(user, UserDTO.class));
+    }
+
+    /**
+     * 更新当前登录用户的昵称与个人资料
+     */
+    @PutMapping("/profile")
+    public Result updateProfile(@Valid @RequestBody UserProfileDTO dto) {
+        return userService.updateProfile(dto);
     }
 
     @GetMapping("/info/{id}")

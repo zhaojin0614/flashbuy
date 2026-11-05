@@ -256,6 +256,10 @@ img { display: block; }
 }
 .profile-head img { width: 68px; height: 68px; border-radius: 50%; border: 3px solid rgba(255,255,255,.6); }
 .profile-head h1 { font-size: 22px; font-weight: 800; }
+.profile-main { flex: 1; min-width: 0; }
+.profile-head .sub { color: rgba(255,255,255,.85); }
+.user-stats span { cursor: pointer; }
+.user-stats span:hover { text-decoration: underline; }
 .sign-card { margin-top: 18px; padding: 24px; display: flex; align-items: center; gap: 26px; }
 .sign-num { text-align: center; }
 .sign-num b { display: block; font-size: 30px; color: var(--primary); }
@@ -278,6 +282,13 @@ img { display: block; }
 .common-follow:hover { transform: translateY(-1px); }
 .common-follow img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #eee; }
 .common-follow .name { font-size: 14px; font-weight: 600; }
+.follow-user {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  margin-bottom: 10px; cursor: pointer;
+}
+.follow-user:hover { transform: translateY(-1px); }
+.follow-user img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #eee; }
+.follow-user .name { flex: 1; font-size: 15px; font-weight: 600; }
 
 @media (max-width: 860px) {
   .grid { grid-template-columns: 1fr; }

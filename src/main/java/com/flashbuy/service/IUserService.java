@@ -3,6 +3,7 @@ package com.flashbuy.service;
 import com.baomidou.mybatisplus.spring.service.IService;
 import com.flashbuy.dto.LoginFormDTO;
 import com.flashbuy.dto.Result;
+import com.flashbuy.dto.UserProfileDTO;
 import com.flashbuy.entity.User;
 
 import jakarta.servlet.http.HttpSession;
@@ -34,4 +35,6 @@ public interface IUserService extends IService<User> {
      * 本月累计签到天数（BITCOUNT 统计整月 BitMap 中 1 的个数）
      */
     Result signMonthCount();
+
+    Result updateProfile(UserProfileDTO dto);
 }

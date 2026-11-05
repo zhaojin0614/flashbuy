@@ -138,4 +138,27 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         counts.put("followee", followee);
         return Result.ok(counts);
     }
+
+    @Override
+    public Result fans(Long userId) {
+        List<Long> ids = query().eq("follow_user_id", userId).list().stream()
+                .map(Follow::getUserId).distinct().collect(Collectors.toList());
+        return Result.ok(toUserDTOs(ids));
+    }
+
+    @Override
+    public Result followees(Long userId) {
+        List<Long> ids = query().eq("user_id", userId).list().stream()
+                .map(Follow::getFollowUserId).distinct().collect(Collectors.toList());
+        return Result.ok(toUserDTOs(ids));
+    }
+
+    private List<UserDTO> toUserDTOs(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return userService.listByIds(ids).stream()
+                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
+                .collect(Collectors.toList());
+    }
 }

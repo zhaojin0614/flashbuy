@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>编辑资料 - 闪购 FlashBuy</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .edit-card { margin-top: 20px; padding: 26px; max-width: 620px; }
+    .edit-card h1 { font-size: 22px; font-weight: 800; margin-bottom: 18px; }
+    .edit-card .field input, .edit-card .field select, .edit-card .field textarea {
+      width: 100%; border: 1.5px solid #e4e0f3; border-radius: 10px;
+      padding: 10px 14px; font-size: 15px; outline: none; font-family: inherit;
+    }
+    .edit-card .field textarea { min-height: 100px; resize: vertical; line-height: 1.8; }
+    .edit-card .field input:focus, .edit-card .field select:focus, .edit-card .field textarea:focus {
+      border-color: var(--primary);
+    }
+    .edit-foot { display: flex; gap: 12px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div id="nav" class="nav"></div>
+  <div class="container">
+    <div class="card edit-card">
+      <h1>编辑资料</h1>
+      <div class="field">
+        <label>昵称</label>
+        <input id="nickName" type="text" maxlength="20" placeholder="给自己起个昵称">
+      </div>
+      <div class="field">
+        <label>城市</label>
+        <input id="city" type="text" maxlength="20" placeholder="例如：杭州">
+      </div>
+      <div class="field">
+        <label>个人介绍</label>
+        <textarea id="introduce" maxlength="128" placeholder="介绍一下自己，让大家更了解你"></textarea>
+      </div>
+      <div class="field">
+        <label>性别</label>
+        <select id="gender">
+          <option value="">不设置</option>
+          <option value="0">男</option>
+          <option value="1">女</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>生日</label>
+        <input id="birthday" type="date">
+      </div>
+      <div class="edit-foot">
+        <button class="btn" id="saveBtn" onclick="saveProfile()">保存</button>
+        <button class="btn btn-outline" onclick="location.href='/profile.html'">取消</button>
+      </div>
+    </div>
+  </div>
+  <script src="/js/axios.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('');
+    if (!isLoggedIn()) goLogin();
+
+    async function loadProfile() {
+      try {
+        const me = (await axios.get('/user/me')).data;
+        document.getElementById('nickName').value = me.nickName || '';
+        document.getElementById('avatar') && (document.getElementById('avatar').src = me.icon || '');
+        const info = (await axios.get('/user/info/' + me.id)).data;
+        if (info) {
+          document.getElementById('city').value = info.city || '';
+          document.getElementById('introduce').value = info.introduce || '';
+          document.getElementById('gender').value = info.gender == null ? '' : (info.gender ? '1' : '0');
+          document.getElementById('birthday').value = info.birthday || '';
+        }
+      } catch (e) {
+        toast(typeof e === 'string' ? e : '资料加载失败', 'error');
+      }
+    }
+
+    async function saveProfile() {
+      const btn = document.getElementById('saveBtn');
+      const nickName = document.getElementById('nickName').value.trim();
+      if (!nickName) return toast('昵称不能为空', 'error');
+      const genderValue = document.getElementById('gender').value;
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      try {
+        await axios.put('/user/profile', {
+          nickName: nickName,
+          city: document.getElementById('city').value.trim(),
+          introduce: document.getElementById('introduce').value.trim(),
+          gender: genderValue === '' ? null : genderValue === '1',
+          birthday: document.getElementById('birthday').value || null
+        });
+        sessionStorage.setItem('nick', nickName);
+        toast('资料已保存', 'success');
+        setTimeout(() => location.href = '/profile.html', 500);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '保存';
+        toast(typeof e === 'string' ? e : '保存失败', 'error');
+      }
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>
