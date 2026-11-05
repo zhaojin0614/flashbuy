@@ -210,6 +210,8 @@ img { display: block; }
 .post-head .name { font-size: 14px; font-weight: 600; }
 .post-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; cursor: pointer; }
 .post-title:hover { color: var(--primary); }
+.post-merchant { font-size: 13px; color: var(--primary); margin: -4px 0 8px; cursor: pointer; }
+.post-merchant:hover { text-decoration: underline; }
 .post-imgs { display: flex; gap: 8px; overflow: hidden; height: 130px; border-radius: 10px; margin-bottom: 10px; }
 .post-imgs img { height: 100%; flex-shrink: 0; border-radius: 8px; object-fit: cover; }
 .post-foot { display: flex; align-items: center; gap: 18px; }

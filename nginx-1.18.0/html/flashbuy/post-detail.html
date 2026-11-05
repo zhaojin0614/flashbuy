@@ -72,8 +72,8 @@
             <div class="d-content">${p.content || ''}</div>
             <div class="d-foot">
               <span class="sub">💬 ${(p.comments || 0)} 条评论</span>
-              <span class="sub" onclick="location.href='/merchant.html?id=${p.merchantId || ''}'"
-                    style="cursor:pointer">🏬 查看相关商户</span>
+              ${p.merchantId ? `<span class="sub" onclick="location.href='/merchant.html?id=${p.merchantId}'"
+                    style="cursor:pointer">🏬 ${p.merchantName || '查看相关商户'}</span>` : ''}
             </div>
           </div>`;
         document.getElementById('cTitle').textContent = `评论（${p.comments || 0}）`;

@@ -24,6 +24,11 @@
     renderNav('post');
     loadMe();
     let page = 1;
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
     async function loadPosts() {
       try {
         const r = await axios.get('/post/hot', { params: { current: page } });
@@ -47,6 +52,8 @@
               </div>
             </div>
             <div class="post-title" onclick="location.href='/post-detail.html?id=${p.id}'">${p.title || ''}</div>
+            ${p.merchantName ? `<div class="post-merchant"
+                  onclick="event.stopPropagation();location.href='/merchant.html?id=${p.merchantId}'">🏬 ${escapeHtml(p.merchantName)}</div>` : ''}
             <div class="post-imgs" onclick="location.href='/post-detail.html?id=${p.id}'" style="cursor:pointer">${(p.images || '').split(',').filter(Boolean).slice(0, 4)
                 .map(src => `<img src="${src}" alt="" onerror="this.style.display='none'">`).join('')}</div>
             <div class="post-foot">

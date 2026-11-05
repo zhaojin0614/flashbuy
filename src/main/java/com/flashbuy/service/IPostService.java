@@ -25,4 +25,6 @@ public interface IPostService extends IService<Post> {
     Result savePost(Post post);
 
     Result queryPostOfFollow(Long max, Integer offset);
+
+    Result queryPostByUserId(Long userId, Integer current);
 }

@@ -1,17 +1,13 @@
 package com.flashbuy.controller;
 
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.flashbuy.dto.Result;
-import com.flashbuy.dto.UserDTO;
 import com.flashbuy.entity.Post;
 import com.flashbuy.service.IPostService;
-import com.flashbuy.utils.SystemConstants;
 import com.flashbuy.utils.UserHolder;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
-import java.util.List;
 
 /**
  * <p>
@@ -40,14 +36,7 @@ public class PostController {
 
     @GetMapping("/of/me")
     public Result queryMyPost(@RequestParam(value = "current", defaultValue = "1") Integer current) {
-        // 获取登录用户
-        UserDTO user = UserHolder.getUser();
-        // 根据用户查询
-        Page<Post> page = postService.query()
-                .eq("user_id", user.getId()).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
-        // 获取当前页数据
-        List<Post> records = page.getRecords();
-        return Result.ok(records);
+        return postService.queryPostByUserId(UserHolder.getUser().getId(), current);
     }
 
     @GetMapping("/hot")
@@ -69,12 +58,7 @@ public class PostController {
     public Result queryPostByUserId(
             @RequestParam(value = "current", defaultValue = "1") Integer current,
             @RequestParam("id") Long id) {
-        // 根据用户查询
-        Page<Post> page = postService.query()
-                .eq("user_id", id).page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
-        // 获取当前页数据
-        List<Post> records = page.getRecords();
-        return Result.ok(records);
+        return postService.queryPostByUserId(id, current);
     }
 
     @GetMapping("/of/follow")

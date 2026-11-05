@@ -36,6 +36,12 @@ public class Post implements Serializable {
      * 商户id
      */
     private Long merchantId;
+
+    /**
+     * 商户名称（联查展示用）
+     */
+    @TableField(exist = false)
+    private String merchantName;
     /**
      * 用户id
      */

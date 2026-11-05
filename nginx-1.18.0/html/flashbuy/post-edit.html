@@ -27,6 +27,29 @@
     .upload-cell b { font-size: 24px; font-weight: 400; }
     .edit-foot { display: flex; gap: 12px; margin-top: 20px; }
     .hint { font-size: 12px; color: var(--text-sub); margin-top: 10px; line-height: 1.8; }
+    .merchant-picker { position: relative; }
+    .merchant-picker input {
+      width: 100%; height: 44px; border: 1.5px solid #e4e0f3; border-radius: 10px;
+      padding: 0 14px; font-size: 15px; outline: none; transition: border .15s;
+    }
+    .merchant-picker input:focus { border-color: var(--primary); }
+    .merchant-results {
+      display: none; position: absolute; left: 0; right: 0; top: 48px; z-index: 20;
+      max-height: 240px; overflow: auto; background: #fff; border: 1px solid #e4e0f3;
+      border-radius: 10px; box-shadow: var(--shadow);
+    }
+    .merchant-option { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f6f4fd; }
+    .merchant-option:last-child { border-bottom: none; }
+    .merchant-option:hover { background: #f6f4fd; }
+    .merchant-option .m-name { font-size: 14px; font-weight: 600; }
+    .merchant-option .m-addr { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+    .merchant-empty { padding: 14px; font-size: 13px; color: var(--text-sub); }
+    .selected-merchant {
+      display: flex; align-items: center; gap: 8px; background: #f6f4fd;
+      border-radius: 10px; padding: 10px 14px; font-size: 14px;
+    }
+    .selected-merchant .m-addr { color: var(--text-sub); font-size: 12px; }
+    .selected-merchant .change { margin-left: auto; color: var(--primary); font-size: 13px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -43,6 +66,16 @@
       <div class="field">
         <label>标题</label>
         <input id="title" type="text" maxlength="42" placeholder="一句话概括这次抢购体验">
+      </div>
+      <div class="field">
+        <label>关联商户 <span style="color:var(--danger)">*</span></label>
+        <div class="merchant-picker">
+          <input id="merchantInput" type="text" placeholder="搜索并选择本次晒单关联的商户" autocomplete="off"
+                 oninput="searchMerchants()" onfocus="searchMerchants()">
+          <div class="merchant-results" id="merchantResults"></div>
+        </div>
+        <div class="selected-merchant" id="selectedMerchant" style="display:none"></div>
+        <div class="hint" style="margin-top:6px">晒单必须关联商户，发布后会展示在晒单列表和详情中。</div>
       </div>
       <div class="field">
         <label>正文</label>
@@ -65,6 +98,67 @@
     const uploaded = [];
     const grid = document.getElementById('imgGrid');
     const upBtn = document.getElementById('upBtn');
+    const merchantInput = document.getElementById('merchantInput');
+    const merchantBox = document.getElementById('merchantResults');
+    const selectedBox = document.getElementById('selectedMerchant');
+    let selectedMerchant = null;
+    let merchantResults = [];
+    let searchTimer = null;
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function searchMerchants() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        try {
+          const r = await axios.get('/merchant/of/name', {
+            params: { name: merchantInput.value.trim(), current: 1 }
+          });
+          merchantResults = r.data || [];
+          renderMerchantResults();
+        } catch (e) { /* 静默，用户可继续输入重试 */ }
+      }, 250);
+    }
+    function renderMerchantResults() {
+      if (!merchantResults.length) {
+        merchantBox.innerHTML = '<div class="merchant-empty">未找到商户</div>';
+        merchantBox.style.display = 'block';
+        return;
+      }
+      merchantBox.innerHTML = merchantResults.map((m, i) => `
+        <div class="merchant-option" onclick="selectMerchant(${i})">
+          <div class="m-name">${escapeHtml(m.name)}</div>
+          <div class="m-addr">${escapeHtml(m.address)}</div>
+        </div>`).join('');
+      merchantBox.style.display = 'block';
+    }
+    function selectMerchant(index) {
+      selectedMerchant = merchantResults[index];
+      merchantBox.style.display = 'none';
+      merchantInput.value = '';
+      merchantInput.style.display = 'none';
+      selectedBox.style.display = 'flex';
+      selectedBox.innerHTML = `
+        <span>🏬</span>
+        <div>
+          <div class="m-name">${escapeHtml(selectedMerchant.name)}</div>
+          <div class="m-addr">${escapeHtml(selectedMerchant.address)}</div>
+        </div>
+        <span class="change" onclick="changeMerchant(event)">更换</span>`;
+    }
+    function changeMerchant(event) {
+      event.stopPropagation();
+      selectedMerchant = null;
+      selectedBox.style.display = 'none';
+      merchantInput.style.display = 'block';
+      merchantInput.focus();
+    }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.merchant-picker')) merchantBox.style.display = 'none';
+    });
 
     async function upload(files) {
       for (const f of files) {
@@ -99,11 +193,13 @@
       const title = document.getElementById('title').value.trim();
       const content = document.getElementById('content').value.trim();
       if (!title) return toast('请填写标题', 'error');
+      if (!selectedMerchant) return toast('请选择关联商户', 'error');
       if (!content) return toast('请填写正文', 'error');
       const btn = document.getElementById('pubBtn');
       btn.disabled = true; btn.textContent = '发布中…';
       try {
         await axios.post('/post', {
+          merchantId: selectedMerchant.id,
           title: title,
           content: content,
           images: uploaded.join(',')
