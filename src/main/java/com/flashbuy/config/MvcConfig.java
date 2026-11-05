@@ -1,7 +1,7 @@
 package com.flashbuy.config;
 
-import com.flashbuy.interceptor.LoginInterceptor;
-import com.flashbuy.interceptor.RefreshTokenInterceptor;
+import com.flashbuy.interceptor.JwtAuthInterceptor;
+import com.flashbuy.interceptor.LoginRequiredInterceptor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -12,15 +12,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class MvcConfig implements WebMvcConfigurer {
     @Autowired
-    private LoginInterceptor loginInterceptor;
+    private LoginRequiredInterceptor loginRequiredInterceptor;
     @Autowired
-    private RefreshTokenInterceptor refreshTokenInterceptor;
+    private JwtAuthInterceptor jwtAuthInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         log.info("开始注册自定义拦截器...");
-        //登录拦截器
-        registry.addInterceptor(loginInterceptor)
+        // 登录校验拦截器
+        registry.addInterceptor(loginRequiredInterceptor)
                 .excludePathPatterns("/user/code")
                 .excludePathPatterns("/user/login")
                 .excludePathPatterns("/user/refresh")
@@ -30,8 +30,8 @@ public class MvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns("/merchant-type/**")
                 .excludePathPatterns("/upload/**")
                 .excludePathPatterns("/product/**").order(1);
-        //token刷新拦截器
-        registry.addInterceptor(refreshTokenInterceptor).order(0);
+        // JWT 解析拦截器
+        registry.addInterceptor(jwtAuthInterceptor).order(0);
 
     }
 }

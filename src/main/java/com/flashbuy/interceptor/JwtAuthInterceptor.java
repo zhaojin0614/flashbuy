@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.flashbuy.dto.UserDTO;
 import com.flashbuy.utils.JwtUtil;
 import com.flashbuy.utils.UserHolder;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -16,28 +17,27 @@ import java.util.Map;
 import static com.flashbuy.utils.RedisConstants.LOGIN_JWT_DENY_KEY;
 
 /**
- * JWT 解析拦截器：从 accessToken 中还原用户到 ThreadLocal（P1 认证升级）
+ * JWT 认证拦截器：从 accessToken 中还原用户到 ThreadLocal。
  *
- * 与课程版（Redis 会话）的差别：token 不再存储于服务端，校验是
- * "验签 + 过期 + 黑名单"三步，全部本地/一次 Redis hasKey 完成，不查用户表。
+ * 校验是"验签 + 过期 + 黑名单"三步，全部本地/一次 Redis hasKey 完成，不查用户表。
  * 无效/过期/拉黑都不在这里 401，而是不填 ThreadLocal，交给
- * LoginInterceptor 统一返回 401——两层拦截器职责分离。
+ * LoginRequiredInterceptor 统一返回 401——两层拦截器职责分离。
  */
 @Component
-public class RefreshTokenInterceptor implements HandlerInterceptor {
+public class JwtAuthInterceptor implements HandlerInterceptor {
 
     @Resource
     private JwtUtil jwtUtil;
 
     @Resource
-    private org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 1.获取请求头中的 accessToken
         String token = request.getHeader("authorization");
         if (StrUtil.isBlank(token)) {
-            return true; // 游标放行，LoginInterceptor 判空拦截
+            return true; // 放行，LoginRequiredInterceptor 判空拦截
         }
         // 2.验签 + 过期校验（无状态）
         Map<String, Object> payload = jwtUtil.parse(token);
