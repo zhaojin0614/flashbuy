@@ -22,10 +22,10 @@ spring:
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
 mybatis-plus:
-  type-aliases-package: com.flashbuy.entity # 别名扫描包
+  type-aliases-package: com.zhaojin.flashbuy.entity # 别名扫描包
 logging:
   level:
-    com.flashbuy: debug
+    com.zhaojin.flashbuy: debug
 jwt:
   secret: flashbuy-demo-hs256-secret-key-2026
   access-ttl-hours: 2
