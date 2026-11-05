@@ -7,7 +7,8 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:3306/flashbuy?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
-    password: 1234
+    # 敏感配置：环境变量优先，缺省值仅供本地开发（公共仓库不含真实生产凭据）
+    password: ${MYSQL_PASSWORD:1234}
   data:
     redis:
       host: localhost
@@ -27,5 +28,6 @@ logging:
   level:
     com.zhaojin.flashbuy: debug
 jwt:
-  secret: flashbuy-demo-hs256-secret-key-2026
+  # 签名密钥：同上，生产环境必须通过环境变量注入，且与默认值不同
+  secret: ${JWT_SECRET:flashbuy-demo-hs256-secret-key-2026}
   access-ttl-hours: 2
