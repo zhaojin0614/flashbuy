@@ -60,7 +60,7 @@ lark-cli docs +update --doc "BEnRwbKqLivTerknO38cRTjDnKh" --as user \
 硬性要求：
 
 - 只追加，不 `overwrite`，不删除或改写历史章节。
-- 章节标题格式：`# <commit 短 hash> <主题>`。
+- 章节标题格式：`# <编号>. <commit 短 hash> <主题>（<完成日期 YYYY-MM-DD>）`。日期取该 commit 的提交日期（`git log --date=format:%Y-%m-%d`），不得编造；索引表与正文标题保持一致。
 - 章节编号必须延续文档既有编号连续递增，不得跳号或被占位章节挤占：markdown 追加不会自动编号，标题需显式写下一段编号（如 `# 12. <commit 短 hash> <主题>`）；追加后校验全文编号连续、索引表章节号与正文标题一致。
 - 同步更新文档顶部的索引表，新增一行：提交 hash / 主题 / 原理关键词 / 章节编号（使用下一个连续编号）。
 - 每个章节必须包含以下七部分，缺一不可：
