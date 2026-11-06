@@ -35,7 +35,7 @@ public class Order implements Serializable {
     private Long userId;
 
     /**
-     * 购买的代金券id
+     * 购买的商品id
      */
     private Long productId;
 

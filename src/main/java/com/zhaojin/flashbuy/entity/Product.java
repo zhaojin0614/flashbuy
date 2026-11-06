@@ -36,7 +36,7 @@ public class Product implements Serializable {
     private Long merchantId;
 
     /**
-     * 代金券标题
+     * 商品标题
      */
     private String title;
 

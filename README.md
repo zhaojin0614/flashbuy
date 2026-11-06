@@ -78,15 +78,24 @@ cd nginx-1.18.0 && ./nginx.exe
 | 抢购 | `POST /order/seckill/{productId}` | Lua 原子预扣 + 异步落库 |
 | 晒单 | `/post/hot` `/post/{id}` `/post/like/{id}` | 热门晒单、点赞 |
 
-## 改造记录
+## 改造记录（关键里程碑）
 
 - `ce53e04` Spring Boot 2.7 → 3.5.16 / JDK 21 / MyBatis-Plus 3.5.18（含 MP 3.5.9+ 拆包迁移）
 - `d029137` 选题改名：包名 / 表名 / 类名 / 接口路径全部语义化，数据库重构为 flashbuy
 - `88c4a0e` 全新前端 + Lua 消息字段名修复 + 端到端验证
+- `a46fe24` 秒杀落库事务修复：锁外移 + 代理调用 + pending 补偿
+- `0b3a3e3` JWT 双 Token / 黑名单 / 滑动窗口限流 / 月累计签到
+- `4fa551a` 晒单闭环：评论、发布、我的订单
+- `fa5e2af` 商户发现、详情与相关晒单（GEO 附近 + 排序）
+- `47aef93` 个人资料、关注动态与粉丝列表
+- `7f468e0` 包名升级 `com.zhaojin.flashbuy` 并清除原作者标识
+- `c577a8b` 敏感配置支持环境变量覆盖
+
+完整逐条原理记录（含验证数据与面试问法）见飞书《闪购改造记录（边改造边学习）》。
 
 ## Roadmap
 
-- [ ] P1 认证与安全：JWT 双 Token + 登录限流（Redis + Lua 滑动窗口）
+- [x] P1 认证与安全：JWT 双 Token + 登录限流（Redis + Lua 滑动窗口）
 - [ ] P3 秒杀增强：RocketMQ 替代 Redis Stream、事务消息 / 本地消息表、压测报告
 - [ ] P4 搜索：Elasticsearch 全文检索 + 数据同步
 - [ ] P5 可观测：Prometheus + Grafana 监控、CI 流水线

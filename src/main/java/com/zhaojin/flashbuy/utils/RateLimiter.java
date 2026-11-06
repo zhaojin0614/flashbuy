@@ -33,10 +33,14 @@ public class RateLimiter {
         // -> 未超限则 ZADD 记录本次并重置过期，返回 1 放行；否则返回 0 拒绝
         SCRIPT = new DefaultRedisScript<>();
         SCRIPT.setScriptText(
+                "local now = tonumber(ARGV[1]) " +
+                "local window = tonumber(ARGV[2]) " +
+                // 先清掉窗口外的旧记录，否则 ZCARD 会把历史请求一起算进来
+                "redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window) " +
                 "local n = redis.call('ZCARD', KEYS[1]) " +
                 "if n < tonumber(ARGV[3]) then " +
-                "  redis.call('ZADD', KEYS[1], ARGV[1], ARGV[4]) " +
-                "  redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2])) " +
+                "  redis.call('ZADD', KEYS[1], now, ARGV[4]) " +
+                "  redis.call('PEXPIRE', KEYS[1], window) " +
                 "  return 1 " +
                 "end " +
                 "return 0");

@@ -15,7 +15,7 @@ import java.util.UUID;
  *
  * accessToken 是无状态的：拦截器只验签名 + 过期 + 黑名单，不查任何存储。
  * 因此登出/撤销不能"删除"token（它根本不在服务端存），只能把 jti 拉黑到
- * token 自然过期为止——这是无状态认证的固有代价，见改造记录第 12 节。
+ * token 自然过期为止——这是无状态认证的固有代价，见改造记录第 11 节。
  */
 @Component
 public class JwtUtil {

@@ -1,5 +1,5 @@
 -- 1.参数列表
--- 1.1.优惠券id
+-- 1.1.商品id
 local productId = ARGV[1]
 -- 1.2.用户id
 local userId = ARGV[2]
