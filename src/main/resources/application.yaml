@@ -35,3 +35,8 @@ jwt:
   # 签名密钥：同上，生产环境必须通过环境变量注入，且与默认值不同
   secret: ${JWT_SECRET:flashbuy-demo-hs256-secret-key-2026}
   access-ttl-hours: 2
+cache:
+  merchant:
+    # 商户详情 L1 本地缓存：最多条数与写入过期时间
+    local-max-size: 10000
+    local-ttl-seconds: 120

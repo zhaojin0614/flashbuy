@@ -10,7 +10,7 @@ import com.zhaojin.flashbuy.entity.Merchant;
 import com.zhaojin.flashbuy.mapper.MerchantMapper;
 import com.zhaojin.flashbuy.service.IMerchantService;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
-import com.zhaojin.flashbuy.utils.CacheClient;
+import com.zhaojin.flashbuy.service.MerchantCacheService;
 import com.zhaojin.flashbuy.utils.RedisData;
 import com.zhaojin.flashbuy.utils.SystemConstants;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,8 +48,8 @@ import static com.zhaojin.flashbuy.utils.RedisConstants.*;
 public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> implements IMerchantService {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
-    @Autowired
-    private CacheClient cacheClient;
+    @Resource
+    private MerchantCacheService merchantCacheService;
 
     /**
      * 启动时把商户坐标同步到 Redis GEO，保证“附近商户”开箱可用。
@@ -75,9 +76,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Override
     public Result queryById(Long id) {
-        //缓存穿透
-        Merchant merchant = cacheClient.queryWithPassThrough(CACHE_MERCHANT_KEY, id, Merchant.class, this::getById,
-                CACHE_MERCHANT_TTL, TimeUnit.MINUTES);
+        // 两级缓存：Caffeine(L1) -> Redis(L2) -> MySQL
+        Merchant merchant = merchantCacheService.get(id, this::getById);
 
         //缓存击穿-逻辑过期
 //        Merchant merchant = cacheClient.queryWithLogicalExpire(CACHE_MERCHANT_KEY,LOCK_MERCHANT_KEY, id, Merchant.class, this::getById,
@@ -156,8 +156,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
             return Result.fail("商户id不能为空");
         //1.更新数据库
         updateById(merchant);
-        //2.删除缓存
-        stringRedisTemplate.delete(CACHE_MERCHANT_KEY + merchant.getId());
+        //2.同时失效本地 L1 与 Redis L2
+        merchantCacheService.evict(id);
         return Result.ok();
     }
 
