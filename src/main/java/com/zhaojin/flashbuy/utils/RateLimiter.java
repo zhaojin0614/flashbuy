@@ -1,6 +1,7 @@
 package com.zhaojin.flashbuy.utils;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
@@ -29,21 +30,9 @@ public class RateLimiter {
     private static final DefaultRedisScript<Long> SCRIPT;
 
     static {
-        // ZREMRANGEBYSCORE 清除窗口外的旧记录 -> ZCARD 统计窗口内次数
-        // -> 未超限则 ZADD 记录本次并重置过期，返回 1 放行；否则返回 0 拒绝
+        // 清窗 -> 计数 -> 未超限则记录本次并设置过期，脚本见 rate_limit.lua
         SCRIPT = new DefaultRedisScript<>();
-        SCRIPT.setScriptText(
-                "local now = tonumber(ARGV[1]) " +
-                "local window = tonumber(ARGV[2]) " +
-                // 先清掉窗口外的旧记录，否则 ZCARD 会把历史请求一起算进来
-                "redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window) " +
-                "local n = redis.call('ZCARD', KEYS[1]) " +
-                "if n < tonumber(ARGV[3]) then " +
-                "  redis.call('ZADD', KEYS[1], now, ARGV[4]) " +
-                "  redis.call('PEXPIRE', KEYS[1], window) " +
-                "  return 1 " +
-                "end " +
-                "return 0");
+        SCRIPT.setLocation(new ClassPathResource("rate_limit.lua"));
         SCRIPT.setResultType(Long.class);
     }
 
