@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -148,16 +149,31 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
 
 
+    @Override
+    public boolean save(Merchant entity) {
+        boolean saved = super.save(entity);
+        if (saved && entity.getId() != null) {
+            merchantCacheService.evictListByType(entity.getTypeId());
+        }
+        return saved;
+    }
+
     @Transactional
     @Override
     public Result update(Merchant merchant) {
         Long id = merchant.getId();
         if (id==null)
             return Result.fail("商户id不能为空");
+        Merchant old = getById(id);
         //1.更新数据库
         updateById(merchant);
         //2.同时失效本地 L1 与 Redis L2
         merchantCacheService.evict(id);
+        Long oldType = old == null ? null : old.getTypeId();
+        if (!Objects.equals(oldType, merchant.getTypeId())) {
+            merchantCacheService.evictListByType(oldType);
+        }
+        merchantCacheService.evictListByType(merchant.getTypeId());
         return Result.ok();
     }
 
@@ -167,15 +183,20 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         boolean byDistance = x != null && y != null
                 && (sortBy == null || sortBy.isBlank() || "distance".equals(sortBy));
         if (!byDistance) {
-            // 2.评分/人气排序走数据库；没有坐标时默认按评分
-            var chain = query().eq("type_id", typeId);
-            if ("comments".equals(sortBy)) {
-                chain.orderByDesc("comments");
-            } else {
-                chain.orderByDesc("score");
-            }
-            Page<Merchant> page = chain.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
-            return Result.ok(page.getRecords());
+            // 2.评分/人气排序走两级缓存；没有坐标时默认按评分
+            String normalizedSort = "comments".equals(sortBy) ? "comments" : "score";
+            String cacheKey = CACHE_MERCHANT_LIST_KEY + typeId + ":" + normalizedSort + ":" + current;
+            List<Merchant> records = merchantCacheService.getList(cacheKey, () -> {
+                var chain = query().eq("type_id", typeId);
+                if ("comments".equals(normalizedSort)) {
+                    chain.orderByDesc("comments");
+                } else {
+                    chain.orderByDesc("score");
+                }
+                Page<Merchant> page = chain.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+                return page.getRecords();
+            });
+            return Result.ok(records);
         }
 
         // 3.计算分页参数

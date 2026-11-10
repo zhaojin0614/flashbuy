@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zhaojin.flashbuy.dto.Result;
 import com.zhaojin.flashbuy.entity.Merchant;
 import com.zhaojin.flashbuy.service.IMerchantService;
+import com.zhaojin.flashbuy.service.MerchantCacheService;
 import com.zhaojin.flashbuy.utils.SystemConstants;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,15 @@ public class MerchantController {
 
     @Resource
     public IMerchantService merchantService;
+
+    @Resource
+    private MerchantCacheService merchantCacheService;
+
+    /** 缓存命中率与热点商户统计（演示用，生产应加权限） */
+    @GetMapping("/cache/stats")
+    public Result cacheStats() {
+        return Result.ok(merchantCacheService.stats());
+    }
 
     /**
      * 根据id查询商铺信息
