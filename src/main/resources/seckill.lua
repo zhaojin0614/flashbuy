@@ -1,3 +1,15 @@
+-- 秒杀原子脚本：库存判断 + 一人一单判断 + 预扣库存 + 写资格 Set + 发送 Stream 消息
+--
+-- KEYS：无。当前脚本根据 ARGV[1] 在内部拼接 key：
+--       库存 key = seckill:stock:{productId}
+--       资格 key = seckill:order:{productId}
+--       单机 Redis 可用；Redis Cluster 下需改为通过 KEYS 传入，并用 {productId} 哈希标签保证同 slot。
+-- ARGV[1] 商品 id
+-- ARGV[2] 用户 id
+-- ARGV[3] 订单 id（RedisIdWorker 生成的全局唯一 id）
+--
+-- 返回：0 = 抢购成功；1 = 库存不足；2 = 重复下单
+--
 -- 1.参数列表
 -- 1.1.商品id
 local productId = ARGV[1]
