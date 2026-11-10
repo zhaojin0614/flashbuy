@@ -8,6 +8,7 @@ import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.zhaojin.flashbuy.entity.Merchant;
 import com.zhaojin.flashbuy.utils.CacheClient;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,6 +22,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
@@ -40,6 +43,9 @@ import static com.zhaojin.flashbuy.utils.RedisConstants.CACHE_MERCHANT_TTL;
  */
 @Service
 public class MerchantCacheService {
+
+    /** 跨实例失效频道：消息格式 id:typeId，typeId 可为空。 */
+    public static final String CACHE_INVALIDATE_CHANNEL = "cache:invalidate:merchant";
 
     @Resource
     private CacheClient cacheClient;
@@ -61,6 +67,13 @@ public class MerchantCacheService {
 
     /** 本机热点商户访问计数，仅用于统计接口，不参与缓存正确性。 */
     private final ConcurrentHashMap<Long, LongAdder> detailAccess = new ConcurrentHashMap<>();
+
+    /** 延迟双删线程：更新后 1 秒再删一次，覆盖并发读回填的旧值。 */
+    private final ScheduledExecutorService evictExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "merchant-cache-evict");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     @PostConstruct
     public void init() {
@@ -116,10 +129,45 @@ public class MerchantCacheService {
         });
     }
 
-    /** 商户更新后同时失效本地 L1 与 Redis L2。 */
-    public void evict(Long id) {
-        localCache.invalidate(id);
-        stringRedisTemplate.delete(CACHE_MERCHANT_KEY + id);
+    /**
+     * 商户新增/更新后失效详情与分类列表，并广播给其他实例。
+     * 立即删一次，1 秒后再删一次，覆盖并发读回填的旧值。
+     */
+    public void evictMerchant(Long id, Long typeId) {
+        evictNow(id, typeId);
+        publishInvalidation(id, typeId);
+        evictExecutor.schedule(() -> {
+            evictNow(id, typeId);
+            publishInvalidation(id, typeId);
+        }, 1, TimeUnit.SECONDS);
+    }
+
+    private void evictNow(Long id, Long typeId) {
+        if (id != null) {
+            localCache.invalidate(id);
+            stringRedisTemplate.delete(CACHE_MERCHANT_KEY + id);
+        }
+        if (typeId != null) {
+            evictListByType(typeId);
+        }
+    }
+
+    private void publishInvalidation(Long id, Long typeId) {
+        if (id == null) {
+            return;
+        }
+        stringRedisTemplate.convertAndSend(CACHE_INVALIDATE_CHANNEL,
+                id + ":" + (typeId == null ? "" : typeId));
+    }
+
+    /** Pub/Sub 订阅端调用：只失效本机 L1，Redis 已由发布方删除。 */
+    public void invalidateLocal(Long id, Long typeId) {
+        if (id != null) {
+            localCache.invalidate(id);
+        }
+        if (typeId != null) {
+            evictListLocal(typeId);
+        }
     }
 
     /** 商户新增/更新后失效该分类的列表缓存（本机 L1 + Redis L2）。 */
@@ -142,6 +190,11 @@ public class MerchantCacheService {
         if (!keys.isEmpty()) {
             listCache.invalidateAll(keys);
         }
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        evictExecutor.shutdownNow();
     }
 
     /** 缓存统计与热点商户（累计访问次数 Top5），用于演示与排查。 */

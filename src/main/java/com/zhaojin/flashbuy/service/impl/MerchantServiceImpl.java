@@ -152,8 +152,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     @Override
     public boolean save(Merchant entity) {
         boolean saved = super.save(entity);
-        if (saved && entity.getId() != null) {
-            merchantCacheService.evictListByType(entity.getTypeId());
+        if (saved) {
+            merchantCacheService.evictMerchant(entity.getId(), entity.getTypeId());
         }
         return saved;
     }
@@ -167,13 +167,12 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         Merchant old = getById(id);
         //1.更新数据库
         updateById(merchant);
-        //2.同时失效本地 L1 与 Redis L2
-        merchantCacheService.evict(id);
+        //2.失效详情与旧/新分类列表，并广播给其他实例
         Long oldType = old == null ? null : old.getTypeId();
+        merchantCacheService.evictMerchant(id, oldType);
         if (!Objects.equals(oldType, merchant.getTypeId())) {
-            merchantCacheService.evictListByType(oldType);
+            merchantCacheService.evictMerchant(id, merchant.getTypeId());
         }
-        merchantCacheService.evictListByType(merchant.getTypeId());
         return Result.ok();
     }
 

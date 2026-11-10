@@ -100,6 +100,7 @@ cd nginx-1.18.0 && ./nginx.exe
 ## Roadmap
 
 - [x] P1 认证与安全：JWT 双 Token + 登录限流（Redis + Lua 滑动窗口）
+- [x] P2 缓存深化：Caffeine + Redis 两级缓存、Pub/Sub 失效、延迟双删、压测报告
 - [ ] P3 秒杀增强：RocketMQ 替代 Redis Stream、事务消息 / 本地消息表、压测报告
 - [ ] P4 搜索：Elasticsearch 全文检索 + 数据同步
 - [ ] P5 可观测：Prometheus + Grafana 监控、CI 流水线
