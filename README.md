@@ -58,13 +58,17 @@ mysql -uroot -p flashbuy < src/main/resources/db/flashbuy.sql
 
 # 2. Redis：localhost:6379（application.yaml 可改）
 
-# 3. 启动后端（8081）
+# 3. 可选：创建本地密钥配置（application-local.yaml 已被 .gitignore 忽略）
+#    填入本机 MySQL 密码与 JWT 密钥；不创建则使用 application.yaml 的本地默认值
+cp application-local.example.yaml application-local.yaml
+
+# 4. 启动后端（8081）
 mvn spring-boot:run
 
-# 4. 启动前端（8080，/api 反代 8081）
+# 5. 启动前端（8080，/api 反代 8081）
 cd nginx-1.18.0 && ./nginx.exe
 
-# 5. 浏览器打开 http://localhost:8080
+# 6. 浏览器打开 http://localhost:8080
 #    登录验证码输出在应用控制台日志（演示环境）
 ```
 

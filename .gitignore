@@ -7,3 +7,4 @@ nginx-1.18.0/temp/
 nginx-1.18.0/html/flashbuy/imgs/posts/
 *.log
 hmdp.bak/
+/application-local.yaml

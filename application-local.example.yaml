@@ -1,0 +1,7 @@
+# 复制本文件为 application-local.yaml，并填入你本机的真实值。
+# application-local.yaml 已被 .gitignore 忽略，不会被提交。
+spring:
+  datasource:
+    password: "your-local-mysql-password"
+jwt:
+  secret: "your-local-jwt-secret-at-least-32-chars"
