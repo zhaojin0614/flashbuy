@@ -26,7 +26,8 @@
 
 - 一人一单三道防线：Lua 的 Set 判断 → Redisson 锁 → 数据库 count 校验
 - 事务保障：锁包住整个事务调用，`proxy.createOrder` 返回即事务已提交后才释放锁
-- 消息可靠性：同步发送 + SEND_OK 校验 + 发送失败补偿回滚；消费自动重试 + 死信 + count 幂等
+- 消息可靠性：事务消息（半消息 → Lua 预扣 → COMMIT/回查）+ 消费自动重试 + 死信 + 幂等三层
+- 压测对比（同机双组）：消费吞吐翻倍（125→250 单/s）、DB 与入口洪峰解耦，详见 [docs/seckill-loadtest.md](docs/seckill-loadtest.md)
 
 ### 🧊 缓存体系
 - 缓存穿透（空值缓存）、击穿（逻辑过期 + 互斥锁）、雪崩（随机 TTL）
