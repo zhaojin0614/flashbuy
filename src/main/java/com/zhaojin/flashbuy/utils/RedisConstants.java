@@ -25,6 +25,8 @@ public class RedisConstants {
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     public static final String SECKILL_ORDER_KEY = "seckill:order:";
+    /** 消费中标记：orderId -> 1，30s TTL。只表示"有消费者正在处理"，非本人不得删除（任务二） */
+    public static final String SECKILL_CONSUMING_KEY = "seckill:consuming:";
     public static final String POST_LIKED_KEY = "post:liked:";
     public static final String FEED_KEY = "feed:";
     public static final String MERCHANT_GEO_KEY = "merchant:geo:";

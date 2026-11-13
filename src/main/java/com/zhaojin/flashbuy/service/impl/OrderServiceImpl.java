@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -93,35 +94,66 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
+    /** 消费中标记 TTL：崩溃后 30s 自愈，需大于单次消费耗时、小于重试退避间隔 */
+    private static final long CONSUMING_TTL_SECONDS = 30;
+
     /**
-     * RocketMQ 消费入口：分布式锁包住整个事务调用（锁在事务外层）。
+     * RocketMQ 消费入口：SETNX 消费中标记 + 分布式锁包住整个事务调用（锁在事务外层）。
      * proxy 调用返回即代表事务已提交，之后才走到 unlock，
      * 消除了"释放锁后、事务尚未提交"期间其他线程读到旧数据的并发缝隙。
      *
-     * 锁获取失败抛异常 => RocketMQ RECONSUME_LATER 自动重试（退避间隔，最多 16 次后进死信），
-     * 重试时 createOrder 的 count 校验兜底幂等——旧 Stream 链路此处是
-     * "log 后静默返回但消息被 XACK"（确认了没建单的消息），属于已知丢单缺口，本次一并修复。
+     * 消费幂等三层：① SETNX 消费中标记（同一 orderId 的并发/重投消息让出）
+     * ② createOrder 的 DB count 校验 ③ tb_order 唯一索引 uk_order_user_product 兜底。
+     *
+     * 标记语义是"正在处理"（30s TTL 自愈）而非"已消费"：count==0 且标记在时，
+     * 无法区分"上一条正在处理"与"上一条崩在落库前"——所以非本人持有的标记绝不删除，
+     * 只抛异常等 MQ 重试（退避 10s/30s 后标记已过期，重新处理）。
+     * 锁获取失败同样抛异常 => RECONSUME_LATER，最多 16 次后进死信。
      */
     @Override
     public void consume(Order order) {
         Long userId = order.getUserId();
-        // 创建锁对象
-        RLock redisLock = redissonClient.getLock("lock:order:" + userId);
-        // 尝试获取锁
-        boolean isLock = redisLock.tryLock();
-        if (!isLock) {
-            // 同一用户的并发消息在抢锁：抛异常交给 RocketMQ 重试，而不是静默丢单
-            log.warn("一人一单锁获取失败，等待 MQ 重试 userId={}", userId);
-            throw new IllegalStateException("lock busy: " + userId);
+        // 0.消费幂等第一层：SETNX 消费中标记（TTL 30s，崩溃后自愈）
+        String consumingKey = RedisConstants.SECKILL_CONSUMING_KEY + order.getId();
+        boolean acquired = Boolean.TRUE.equals(stringRedisTemplate.opsForValue()
+                .setIfAbsent(consumingKey, "1", CONSUMING_TTL_SECONDS, TimeUnit.SECONDS));
+        if (!acquired) {
+            // SETNX 失败 = 同一消息的并发投递或重投，上一条正在处理（或已处理完）
+            long count = query().eq("user_id", userId).eq("product_id", order.getProductId()).count();
+            if (count > 0) {
+                // 上一条已提交落库——幂等 ACK，不再处理
+                log.info("重复消息，订单已存在，幂等跳过 orderId={}", order.getId());
+                return;
+            }
+            // 上一条还在处理中（或崩在落库前，等标记过期）：抛异常等 MQ 重试，绝不清别人的标记
+            log.info("同一订单消息正在处理中，让出等待重试 orderId={}", order.getId());
+            throw new IllegalStateException("consuming in progress, orderId=" + order.getId());
         }
-
         try {
-            // 关键：走代理调用，@Transactional 才会生效，不能写 this.createOrder(...)
-            proxy.createOrder(order);
-        } finally {
-            // 释放锁
-            redisLock.unlock();
+            // 创建锁对象
+            RLock redisLock = redissonClient.getLock("lock:order:" + userId);
+            // 尝试获取锁
+            boolean isLock = redisLock.tryLock();
+            if (!isLock) {
+                // 同一用户的并发消息在抢锁：抛异常交给 RocketMQ 重试，而不是静默丢单
+                log.warn("一人一单锁获取失败，等待 MQ 重试 userId={}", userId);
+                throw new IllegalStateException("lock busy: " + userId);
+            }
+
+            try {
+                // 关键：走代理调用，@Transactional 才会生效，不能写 this.createOrder(...)
+                proxy.createOrder(order);
+            } finally {
+                // 释放锁
+                redisLock.unlock();
+            }
+        } catch (RuntimeException e) {
+            // 只清理自己持有的标记，否则 MQ 重试的消息会被它挡在门外（等于丢了重试机会）
+            stringRedisTemplate.delete(consumingKey);
+            throw e;
         }
+        // 成功后释放消费中标记（终态判定交给 DB count，重复消息会走"已落库"分支幂等 ACK）
+        stringRedisTemplate.delete(consumingKey);
     }
 
     /**
