@@ -59,7 +59,7 @@ lark-cli docs +update --doc "BEnRwbKqLivTerknO38cRTjDnKh" --as user \
 
 硬性要求：
 
-- 只追加，不 `overwrite`，不删除或改写历史章节。
+- 默认只追加，不 `overwrite`，不删除或改写历史章节；发现文档内容确有错误（事实性错误、残留缺陷）时，**经用户明确同意后**可做最小化勘误（block 级精准替换出错文字），勘误前后内容须向用户列明。
 - 章节标题格式：`# <编号>. <commit 短 hash> <主题>（<完成日期 YYYY-MM-DD>）`。日期取该 commit 的提交日期（`git log --date=format:%Y-%m-%d`），不得编造；索引表与正文标题保持一致。
 - 章节编号必须延续文档既有编号连续递增，不得跳号或被占位章节挤占：markdown 追加不会自动编号，标题需显式写下一段编号（如 `# 12. <commit 短 hash> <主题>`）；追加后校验全文编号连续、索引表章节号与正文标题一致。
 - 同步更新文档顶部的索引表，新增一行：提交 hash / 主题 / 原理关键词 / 章节编号（使用下一个连续编号）。
@@ -107,7 +107,7 @@ lark-cli docs +update --doc "BEnRwbKqLivTerknO38cRTjDnKh" --as user \
   - node_token：`R7gtwdUHhie1GlkHejvccF7bnOc`
   - obj_token：`J9CsdTf1jogHH1xP6fYczU8sn5c`
 - 写入要求：
-  - 按主题分节，只追加，不覆盖历史；
+  - 按主题分节，默认只追加，不覆盖历史；发现内容错误经用户明确同意后可做最小化勘误（同第四节规则）；
   - 每节至少包含：一句话总结、核心概念与关系、关键代码/示例、常见坑、面试问答；
   - 多轮追问的同一主题可以合并补充，但要保留用户已经确认的结论；
   - 写入后重新读取，检查中文、代码块和结构是否正常。
