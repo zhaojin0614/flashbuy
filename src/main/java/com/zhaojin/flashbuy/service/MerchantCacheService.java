@@ -176,6 +176,7 @@ public class MerchantCacheService {
             return;
         }
         evictListLocal(typeId);
+        // 用 Redis KEYS 模式匹配，找出该分类所有列表 key
         Set<String> keys = stringRedisTemplate.keys(CACHE_MERCHANT_LIST_KEY + typeId + ":*");
         if (keys != null && !keys.isEmpty()) {
             stringRedisTemplate.delete(keys);
@@ -184,11 +185,11 @@ public class MerchantCacheService {
 
     private void evictListLocal(Long typeId) {
         String prefix = CACHE_MERCHANT_LIST_KEY + typeId + ":";
-        List<String> keys = listCache.asMap().keySet().stream()
-                .filter(key -> key.startsWith(prefix))
+        List<String> keys = listCache.asMap().keySet().stream() // ① 拿到缓存里所有 key 的实时视图
+                .filter(key -> key.startsWith(prefix))    // ② 筛出属于该分类的
                 .collect(Collectors.toList());
         if (!keys.isEmpty()) {
-            listCache.invalidateAll(keys);
+            listCache.invalidateAll(keys);                      // ③ 批量失效
         }
     }
 
