@@ -117,6 +117,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
         @Override
         public void run() {
+            // 启动时先消化上一进程遗留的 PEL 滞留消息（A 级补丁）
+            handlePendingList();
             while (running) {
                 try {
                     // 1.获取消息队列中的订单信息 XREADGROUP GROUP g1 c1 COUNT 1 BLOCK 2000 STREAMS s1 >
