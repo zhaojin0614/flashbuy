@@ -1,0 +1,25 @@
+# Docker Hub TLS 在当前网络被阻断，使用 DaoCloud 镜像；
+# 网络正常时可换回 apache/rocketmq:4.9.7。
+services:
+  namesrv:
+    image: docker.m.daocloud.io/apache/rocketmq:4.9.7
+    container_name: flashbuy-rmqnamesrv
+    ports:
+      - "9876:9876"
+    command: sh mqnamesrv
+    restart: unless-stopped
+
+  broker:
+    image: docker.m.daocloud.io/apache/rocketmq:4.9.7
+    container_name: flashbuy-rmqbroker
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - ./broker.conf:/home/rocketmq/broker.conf:ro
+    command: sh mqbroker -c /home/rocketmq/broker.conf
+    environment:
+      NAMESRV_ADDR: namesrv:9876
+    depends_on:
+      - namesrv
+    restart: unless-stopped
