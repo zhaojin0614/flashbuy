@@ -8,22 +8,23 @@
 ### ⚡ 秒杀 / 抢购链路（重点）
 
 ```
-请求线程                          Redis                          后台消费线程
-   │                                                                │
-   ├── seckill.lua 三合一原子脚本 ──► 资格判断 + 预扣库存 + XADD      │
-   │   （库存校验 / Set 防重 / 扣减 / 发消息一次完成）                   │
-   │                                                                │
-   └── 立即返回订单号                  stream.orders ──XREADGROUP──► VoucherOrderHandler
-                                                                    │  Redisson 分布式锁（一人一单）
-                                                                    │  proxy.createOrder() @Transactional
-                                                                    │  数据库乐观锁扣库存（防超卖兜底）
-                                                                    ├── XACK 确认
-                                                                    └── 异常时 handlePendingList 补偿
+请求线程              Redis                      RocketMQ                    消费者容器
+   │                   │                            │                          │
+   ├── seckill.lua 原子脚本 ──► 资格判断+预扣库存+写资格Set                        │
+   │                   │                            │                          │
+   ├── 同步发送 MQ ─────┼──────────────────────────► │ seckill_order_topic       │
+   │  （发送失败→补偿 Lua 原子回滚资格与库存）                        │           │
+   ├── 立即返回订单号    │                            └──push──► SeckillOrderListener
+   │                                                │  Redisson 分布式锁（一人一单）
+   │                                                │  proxy.createOrder() @Transactional
+   │                                                │  数据库乐观锁扣库存（防超卖兜底）
+   │                                                ├── 正常返回 = CONSUME_SUCCESS
+   │                                                └── 异常自动重试 → 死信 %DLQ%
 ```
 
 - 一人一单三道防线：Lua 的 Set 判断 → Redisson 锁 → 数据库 count 校验
 - 事务保障：锁包住整个事务调用，`proxy.createOrder` 返回即事务已提交后才释放锁
-- 消息可靠性：消费组 + 手动 ACK + pending-list 补偿，消息不丢、幂等消费
+- 消息可靠性：同步发送 + SEND_OK 校验 + 发送失败补偿回滚；消费自动重试 + 死信 + count 幂等
 
 ### 🧊 缓存体系
 - 缓存穿透（空值缓存）、击穿（逻辑过期 + 互斥锁）、雪崩（随机 TTL）
@@ -44,7 +45,7 @@ GEO 附近商户 · BitMap 签到与连续统计 · HyperLogLog UV 统计 ·
 | 语言 / 运行时 | JDK 21 |
 | 框架 | Spring Boot 3.5.16 |
 | ORM | MyBatis-Plus 3.5.18.1 |
-| 缓存 / MQ | Redis 7（Lettuce）、Redisson 3.50、Redis Stream 消息队列 |
+| 缓存 / MQ | Redis 7（Lettuce）、Redisson 3.50、RocketMQ 4.9（Docker）消息队列 |
 | 数据库 | MySQL 8.0 |
 | 前端 | 原生 JS + 手写 CSS（无框架依赖），nginx 8080 反代 |
 | 版本控制 | Git（每次改造独立提交，可追溯） |
@@ -58,17 +59,20 @@ mysql -uroot -p flashbuy < src/main/resources/db/flashbuy.sql
 
 # 2. Redis：localhost:6379（application.yaml 可改）
 
-# 3. 可选：创建本地密钥配置（application-local.yaml 已被 .gitignore 忽略）
+# 3. RocketMQ（秒杀异步下单）：docker compose 一键拉起 NameServer + Broker
+docker compose -f docker/rocketmq/docker-compose.yml up -d
+
+# 4. 可选：创建本地密钥配置（application-local.yaml 已被 .gitignore 忽略）
 #    填入本机 MySQL 密码与 JWT 密钥；不创建则使用 application.yaml 的本地默认值
 cp application-local.example.yaml application-local.yaml
 
-# 4. 启动后端（8081）
+# 5. 启动后端（8081）
 mvn spring-boot:run
 
-# 5. 启动前端（8080，/api 反代 8081）
+# 6. 启动前端（8080，/api 反代 8081）
 cd nginx-1.18.0 && ./nginx.exe
 
-# 6. 浏览器打开 http://localhost:8080
+# 7. 浏览器打开 http://localhost:8080
 #    登录验证码输出在应用控制台日志（演示环境）
 ```
 
@@ -94,6 +98,8 @@ cd nginx-1.18.0 && ./nginx.exe
 - `47aef93` 个人资料、关注动态与粉丝列表
 - `7f468e0` 包名升级 `com.zhaojin.flashbuy` 并清除原作者标识
 - `c577a8b` 敏感配置支持环境变量覆盖
+- `9529ded` 缓存深化：Caffeine 两级缓存 + Pub/Sub 跨实例失效 + 压测报告（c494e28/841abac/9529ded）
+- `3f7a6d4` PEL 滞留消息补丁 + RocketMQ 4.9 Docker 环境（3f7a6d4/7e34de4）
 
 完整逐条原理记录（含验证数据与面试问法）见飞书《闪购改造记录（边改造边学习）》。
 

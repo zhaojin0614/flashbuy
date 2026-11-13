@@ -42,3 +42,9 @@ cache:
     # 商户详情 L1 本地缓存：最多条数与写入过期时间
     local-max-size: 10000
     local-ttl-seconds: 120
+rocketmq:
+  # 本地环境由 docker/rocketmq/docker-compose.yml 拉起（NameServer 9876 + Broker 10911）
+  name-server: 127.0.0.1:9876
+  producer:
+    # 生产者组：同组实例发送语义一致；事务消息回查也按组寻址
+    group: flashbuy-order-producer

@@ -19,6 +19,12 @@ public interface IOrderService extends IService<Order> {
     void createOrder(Order order);
 
     /**
+     * RocketMQ 消费入口：Redisson 锁（一人一单）+ 事务落库。
+     * 锁获取失败抛异常，由 MQ 自动重试（RECONSUME_LATER）而非静默丢单。
+     */
+    void consume(Order order);
+
+    /**
      * 查询当前用户对某商品的抢购状态：
      * qualified = 已获得抢购资格（Lua 阶段同步写入 Redis Set，秒级即时）
      * ordered   = 订单已异步落库（DB）

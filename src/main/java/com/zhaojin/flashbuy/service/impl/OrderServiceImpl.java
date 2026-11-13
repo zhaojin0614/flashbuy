@@ -1,8 +1,8 @@
 package com.zhaojin.flashbuy.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.zhaojin.flashbuy.dto.Result;
+import com.zhaojin.flashbuy.dto.SeckillMessage;
 import com.zhaojin.flashbuy.entity.Order;
 import com.zhaojin.flashbuy.entity.Merchant;
 import com.zhaojin.flashbuy.entity.Product;
@@ -15,32 +15,23 @@ import com.zhaojin.flashbuy.utils.RedisConstants;
 import com.zhaojin.flashbuy.utils.RedisIdWorker;
 import com.zhaojin.flashbuy.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.connection.stream.Consumer;
-import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.ReadOffset;
-import org.springframework.data.redis.connection.stream.StreamOffset;
-import org.springframework.data.redis.connection.stream.StreamReadOptions;
-import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 /**
@@ -87,117 +78,41 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         SECKILL_SCRIPT.setResultType(Long.class);
     }
 
-    private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
+    /**
+     * 补偿脚本：MQ 发送失败时回滚 Lua 预扣（库存 +1、SREM 资格），
+     * 两条命令在一个脚本里原子完成，避免"库存已回补但资格还在"的半回滚状态
+     */
+    private static final DefaultRedisScript<Long> SECKILL_ROLLBACK_SCRIPT;
 
-    private volatile boolean running = true;
-
-    @PostConstruct
-    private void init() {
-        // 创建消费组，MKSTREAM表示stream不存在时一并创建；组已存在时会抛异常，忽略即可
-        try {
-            stringRedisTemplate.execute((RedisCallback<String>) connection ->
-                    connection.streamCommands().xGroupCreate(
-                            "stream.orders".getBytes(StandardCharsets.UTF_8),
-                            "g1",
-                            ReadOffset.from("0"),
-                            true));
-        } catch (Exception e) {
-            log.debug("订单消费组已存在：{}", e.getMessage());
-        }
-        SECKILL_ORDER_EXECUTOR.submit(new OrderHandler());
+    static {
+        SECKILL_ROLLBACK_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_ROLLBACK_SCRIPT.setLocation(new ClassPathResource("seckill_rollback.lua"));
+        SECKILL_ROLLBACK_SCRIPT.setResultType(Long.class);
     }
 
-    @PreDestroy
-    public void destroy() {
-        running = false;
-        SECKILL_ORDER_EXECUTOR.shutdownNow();
-    }
-
-    private class OrderHandler implements Runnable {
-
-        @Override
-        public void run() {
-            // 启动时先消化上一进程遗留的 PEL 滞留消息（A 级补丁）
-            handlePendingList();
-            while (running) {
-                try {
-                    // 1.获取消息队列中的订单信息 XREADGROUP GROUP g1 c1 COUNT 1 BLOCK 2000 STREAMS s1 >
-                    List<MapRecord<String, Object, Object>> list = stringRedisTemplate.opsForStream().read(
-                            Consumer.from("g1", "c1"),
-                            StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),
-                            StreamOffset.create("stream.orders", ReadOffset.lastConsumed())
-                    );
-                    // 2.判断订单信息是否为空
-                    if (list == null || list.isEmpty()) {
-                        // 如果为null，说明没有消息，继续下一次循环
-                        continue;
-                    }
-                    // 解析数据
-                    MapRecord<String, Object, Object> record = list.get(0);
-                    Map<Object, Object> value = record.getValue();
-                    Order order = BeanUtil.fillBeanWithMap(value, new Order(), true);
-                    // 3.处理订单（锁 + 事务 + 落库）
-                    handleOrder(order);
-                    // 4.确认消息 XACK
-                    stringRedisTemplate.opsForStream().acknowledge("stream.orders", "g1", record.getId());
-                } catch (Exception e) {
-                    if (!running) {
-                        break;
-                    }
-                    log.error("处理订单异常", e);
-                    handlePendingList();
-                }
-            }
-        }
-
-        private void handlePendingList() {
-            while (running) {
-                try {
-                    // 1.获取pending-list中的订单信息 XREADGROUP GROUP g1 c1 COUNT 1 STREAMS s1 0
-                    List<MapRecord<String, Object, Object>> list = stringRedisTemplate.opsForStream().read(
-                            Consumer.from("g1", "c1"),
-                            StreamReadOptions.empty().count(1),
-                            StreamOffset.create("stream.orders", ReadOffset.from("0"))
-                    );
-                    // 2.判断订单信息是否为空
-                    if (list == null || list.isEmpty()) {
-                        // 如果为null，说明没有异常消息，结束循环
-                        break;
-                    }
-                    // 解析数据
-                    MapRecord<String, Object, Object> record = list.get(0);
-                    Map<Object, Object> value = record.getValue();
-                    Order order = BeanUtil.fillBeanWithMap(value, new Order(), true);
-                    // 3.处理订单（锁 + 事务 + 落库）
-                    handleOrder(order);
-                    // 4.确认消息 XACK
-                    stringRedisTemplate.opsForStream().acknowledge("stream.orders", "g1", record.getId());
-                } catch (Exception e) {
-                    if (!running) {
-                        break;
-                    }
-                    log.error("处理订单异常", e);
-                }
-            }
-        }
-    }
+    @Resource
+    private RocketMQTemplate rocketMQTemplate;
 
     /**
-     * 消费入口：分布式锁包住整个事务调用（锁在事务外层）。
+     * RocketMQ 消费入口：分布式锁包住整个事务调用（锁在事务外层）。
      * proxy 调用返回即代表事务已提交，之后才走到 unlock，
      * 消除了"释放锁后、事务尚未提交"期间其他线程读到旧数据的并发缝隙。
+     *
+     * 锁获取失败抛异常 => RocketMQ RECONSUME_LATER 自动重试（退避间隔，最多 16 次后进死信），
+     * 重试时 createOrder 的 count 校验兜底幂等——旧 Stream 链路此处是
+     * "log 后静默返回但消息被 XACK"（确认了没建单的消息），属于已知丢单缺口，本次一并修复。
      */
-    private void handleOrder(Order order) {
+    @Override
+    public void consume(Order order) {
         Long userId = order.getUserId();
         // 创建锁对象
         RLock redisLock = redissonClient.getLock("lock:order:" + userId);
         // 尝试获取锁
         boolean isLock = redisLock.tryLock();
-        // 判断
         if (!isLock) {
-            // 获取锁失败，直接返回失败或者重试
-            log.error("不允许重复下单！");
-            return;
+            // 同一用户的并发消息在抢锁：抛异常交给 RocketMQ 重试，而不是静默丢单
+            log.warn("一人一单锁获取失败，等待 MQ 重试 userId={}", userId);
+            throw new IllegalStateException("lock busy: " + userId);
         }
 
         try {
@@ -246,7 +161,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Override
     public Result orderState(Long productId) {
         Long userId = UserHolder.getUser().getId();
-        // 1.抢购资格：Lua 阶段同步写入的 Redis Set（资格判断、预扣库存、发消息三合一）
+        // 1.抢购资格：Lua 阶段同步写入的 Redis Set（资格判断、预扣库存、写资格 Set 三合一）
         boolean qualified = Boolean.TRUE.equals(stringRedisTemplate.opsForSet()
                 .isMember(RedisConstants.SECKILL_ORDER_KEY + productId, userId.toString()));
         // 2.订单是否已异步落库
@@ -296,11 +211,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     public Result seckillProduct(Long productId) {
         Long userId = UserHolder.getUser().getId();
         long orderId = redisIdWorker.nextId("order");
-        // 1.执行lua脚本
+        // 1.执行lua脚本：资格判断 + 预扣库存 + 写资格 Set（原子，不含消息投递）
         Long result = stringRedisTemplate.execute(
                 SECKILL_SCRIPT,
                 Collections.emptyList(),
-                productId.toString(), userId.toString(), String.valueOf(orderId)
+                productId.toString(), userId.toString()
         );
         int r = result.intValue();
         // 2.判断结果是否为0
@@ -308,7 +223,24 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             // 2.1.不为0，代表没有购买资格
             return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
         }
-        // 3.返回订单id
+        // 3.同步发送 RocketMQ（生产者自动重试 2 次；SEND_OK = Broker 已写入，此后异步落库）
+        try {
+            SendResult sendResult = rocketMQTemplate.syncSend(SeckillMessage.TOPIC,
+                    new SeckillMessage(userId, productId, orderId));
+            // 非 SEND_OK（如 FLUSH_DISK_TIMEOUT）同样按失败处理：补偿回滚；
+            // 若消息实际已被投递，消费端 count 校验兜底幂等，不会重复建单
+            if (!SendStatus.SEND_OK.equals(sendResult.getSendStatus())) {
+                throw new IllegalStateException("MQ 发送状态异常: " + sendResult.getSendStatus());
+            }
+        } catch (Exception e) {
+            log.error("MQ 发送失败，执行 Lua 预扣补偿回滚 productId={} userId={} orderId={}",
+                    productId, userId, orderId, e);
+            // 补偿原子回滚：库存 +1 与撤销资格一起完成
+            stringRedisTemplate.execute(SECKILL_ROLLBACK_SCRIPT, Collections.emptyList(),
+                    productId.toString(), userId.toString());
+            return Result.fail("系统繁忙，请稍后重试");
+        }
+        // 4.返回订单id
         return Result.ok(orderId);
     }
 }
