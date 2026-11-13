@@ -12,6 +12,7 @@ import com.zhaojin.flashbuy.service.IMerchantService;
 import com.zhaojin.flashbuy.service.IProductReleaseService;
 import com.zhaojin.flashbuy.service.IProductService;
 import com.zhaojin.flashbuy.service.IOrderService;
+import com.zhaojin.flashbuy.utils.RateLimiter;
 import com.zhaojin.flashbuy.utils.RedisConstants;
 import com.zhaojin.flashbuy.utils.RedisIdWorker;
 import com.zhaojin.flashbuy.utils.UserHolder;
@@ -91,6 +92,21 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     /** 订单超时关单延迟级别（对应 broker.conf 定制的 messageDelayLevel，14 = 15m） */
     @Value("${order.close-delay-level:14}")
     private int closeDelayLevel;
+
+    /** 入口令牌桶限流开关（压测时关闭以测裸链路） */
+    @Value("${order.seckill-ratelimit.enabled:true}")
+    private boolean seckillRatelimitEnabled;
+    @Value("${order.seckill-ratelimit.api-capacity:200}")
+    private long apiCapacity;
+    @Value("${order.seckill-ratelimit.api-refill-per-sec:100}")
+    private double apiRefillPerSec;
+    @Value("${order.seckill-ratelimit.user-capacity:5}")
+    private long userCapacity;
+    @Value("${order.seckill-ratelimit.user-refill-per-sec:1}")
+    private double userRefillPerSec;
+
+    @Resource
+    private RateLimiter rateLimiter;
 
     /**
      * RocketMQ 消费入口：SETNX 消费中标记 + 分布式锁包住整个事务调用（锁在事务外层）。
@@ -292,6 +308,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Override
     public Result seckillProduct(Long productId) {
         Long userId = UserHolder.getUser().getId();
+        // 0.入口双重令牌桶限流（先用户级——便宜的精准拒绝，再接口级——保护下游 Lua/MQ/DB）：
+        //   用户级容量 5、1/s：防单用户刷接口；接口级容量 200、100/s：允许突发、限持续流量
+        if (seckillRatelimitEnabled) {
+            if (!rateLimiter.tryAcquire("rl:seckill:user:" + userId, userCapacity, userRefillPerSec, 1)) {
+                return Result.fail("抢购太频繁，请稍后再试");
+            }
+            if (!rateLimiter.tryAcquire("rl:seckill:api", apiCapacity, apiRefillPerSec, 1)) {
+                return Result.fail("当前抢购人数过多，请稍后再试");
+            }
+        }
         long orderId = redisIdWorker.nextId("order");
         // 1.事务消息（任务四）：先发半消息，Lua 预扣作为"本地事务"在半消息之后同步执行。
         //   时序：半消息 → Lua 预扣 → COMMIT/ROLLBACK；COMMIT 确认丢失由回查按资格 Set 兜底。
