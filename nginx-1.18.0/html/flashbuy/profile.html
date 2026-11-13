@@ -98,6 +98,8 @@
         monR.status === 'fulfilled' ? (monR.value.data || 0) : '-';
       updateSignState(cntR.status === 'fulfilled' ? (cntR.value.data || 0) : null);
     }
+    // 订单状态文案（tb_order.status：1 未支付 / 2 已支付 / 3 已核销 / 4 已取消 / 5 退款中 / 6 已退款）
+    const ORDER_STATUS = {1: '待支付', 2: '已支付', 3: '已核销', 4: '已取消', 5: '退款中', 6: '已退款'};
     async function loadOrders() {
       try {
         const r = await axios.get('/order/of/me');
@@ -114,7 +116,7 @@
             </div>
             <div style="text-align:right">
               <div class="price" style="font-size:16px">¥${((o.payValue || 0) / 100).toFixed(2)}</div>
-              <div class="sub">订单 ${o.orderId}</div>
+              <div class="sub">订单 ${o.orderId}${ORDER_STATUS[o.status] ? ' · ' + ORDER_STATUS[o.status] : ''}</div>
             </div>
           </div>`).join('');
       } catch (e) {

@@ -2,6 +2,7 @@ package com.zhaojin.flashbuy.service.impl;
 
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.zhaojin.flashbuy.dto.Result;
+import com.zhaojin.flashbuy.dto.OrderCloseMessage;
 import com.zhaojin.flashbuy.dto.SeckillMessage;
 import com.zhaojin.flashbuy.entity.Order;
 import com.zhaojin.flashbuy.entity.Merchant;
@@ -20,9 +21,11 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -97,6 +100,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     /** 消费中标记 TTL：崩溃后 30s 自愈，需大于单次消费耗时、小于重试退避间隔 */
     private static final long CONSUMING_TTL_SECONDS = 30;
 
+    /** 订单超时关单延迟级别（对应 broker.conf 定制的 messageDelayLevel，14 = 15m） */
+    @Value("${order.close-delay-level:14}")
+    private int closeDelayLevel;
+
     /**
      * RocketMQ 消费入口：SETNX 消费中标记 + 分布式锁包住整个事务调用（锁在事务外层）。
      * proxy 调用返回即代表事务已提交，之后才走到 unlock，
@@ -142,7 +149,14 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
             try {
                 // 关键：走代理调用，@Transactional 才会生效，不能写 this.createOrder(...)
-                proxy.createOrder(order);
+                boolean created = proxy.createOrder(order);
+                if (created) {
+                    // 落库成功 → 发延迟关单消息（超时未支付自动取消）。
+                    // 发送失败只记日志不上抛：订单已存在，重试 consume 会走"已落库"分支
+                    // 而不再发关单消息，上抛反而让重试链路把关单消息弄丢——残留未关单
+                    // 订单由对账脚本兜底（见任务三记录的已知边界）。
+                    sendOrderCloseMessage(order);
+                }
             } finally {
                 // 释放锁
                 redisLock.unlock();
@@ -157,12 +171,29 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     }
 
     /**
+     * 发送延迟关单消息：级别由 order.close-delay-level 配置（broker.conf 定制 14=15m），
+     * 测试可用 --order.close-delay-level=1（1s）快速验证。
+     */
+    private void sendOrderCloseMessage(Order order) {
+        try {
+            MessageBuilder<OrderCloseMessage> builder = MessageBuilder.withPayload(
+                    new OrderCloseMessage(order.getUserId(), order.getProductId(), order.getId()));
+            rocketMQTemplate.syncSend(OrderCloseMessage.TOPIC, builder.build(), 3000, closeDelayLevel);
+            log.info("延迟关单消息已发送 orderId={} delayLevel={}", order.getId(), closeDelayLevel);
+        } catch (Exception e) {
+            log.error("延迟关单消息发送失败，订单将滞留未支付状态，需对账脚本兜底 orderId={}", order.getId(), e);
+        }
+    }
+
+    /**
      * 只做数据库操作：count 校验 + 扣库存 + 建订单，由 @Transactional 保证原子性。
      * 注意：必须是 public，Spring 事务基于代理实现，private 方法上事务不生效。
+     *
+     * @return 是否真正创建订单（false = 重复下单/库存不足，消费方据此决定是否发关单消息）
      */
     @Transactional
     @Override
-    public void createOrder(Order order) {
+    public boolean createOrder(Order order) {
         Long userId = order.getUserId();
         Long productId = order.getProductId();
 
@@ -172,7 +203,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         if (count > 0) {
             // 用户已经购买过了
             log.error("不允许重复下单！");
-            return;
+            return false;
         }
 
         // 6.乐观锁扣减库存（防超卖兜底）
@@ -183,11 +214,42 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         if (!success) {
             // 扣减失败
             log.error("库存不足！");
-            return;
+            return false;
         }
 
         // 7.创建订单
         save(order);
+        return true;
+    }
+
+    /**
+     * 延迟关单消费入口：状态机 CAS（status 1→4）保证幂等——
+     * 只有"未支付"会被关闭；已支付/已关闭/不存在的订单直接 ACK 跳过。
+     * 关单成功后回补库存并撤销资格（取消订单释放一人一单名额，允许用户重新抢购）。
+     */
+    @Override
+    public void consumeClose(OrderCloseMessage message) {
+        Long orderId = message.getOrderId();
+        // 1.状态机 CAS：并发/重复关单消息只有一条能把 1 改成 4
+        boolean closed = update().setSql("status = 4")
+                .eq("id", orderId).eq("status", 1).update();
+        if (!closed) {
+            log.info("关单跳过：订单不存在或状态已流转 orderId={}", orderId);
+            return;
+        }
+        // 2.回补 DB 权威库存（取消订单释放库存，直接加回，无超卖风险）
+        seckillProductService.update()
+                .setSql("stock = stock + 1")
+                .eq("product_id", message.getProductId())
+                .update();
+        // 3.回补 Redis 预扣库存（key 可能已过期/被清理，存在才加）并撤销资格
+        String stockKey = RedisConstants.SECKILL_STOCK_KEY + message.getProductId();
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(stockKey))) {
+            stringRedisTemplate.opsForValue().increment(stockKey);
+        }
+        stringRedisTemplate.opsForSet().remove(RedisConstants.SECKILL_ORDER_KEY + message.getProductId(),
+                message.getUserId().toString());
+        log.info("订单超时关闭完成 orderId={} productId={} userId={}", orderId, message.getProductId(), message.getUserId());
     }
 
     @Override

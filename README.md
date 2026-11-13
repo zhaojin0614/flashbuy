@@ -20,6 +20,8 @@
    │                                                │  数据库乐观锁扣库存（防超卖兜底）
    │                                                ├── 正常返回 = CONSUME_SUCCESS
    │                                                └── 异常自动重试 → 死信 %DLQ%
+   │                                                    落库成功 → 延迟消息(15m) → OrderCloseListener
+   │                                                    状态机 CAS 1→4 + 回补库存/撤销资格
 ```
 
 - 一人一单三道防线：Lua 的 Set 判断 → Redisson 锁 → 数据库 count 校验
