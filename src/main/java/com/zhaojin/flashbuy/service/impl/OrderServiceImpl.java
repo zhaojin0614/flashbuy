@@ -16,8 +16,8 @@ import com.zhaojin.flashbuy.utils.RedisConstants;
 import com.zhaojin.flashbuy.utils.RedisIdWorker;
 import com.zhaojin.flashbuy.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.producer.SendResult;
-import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
+import org.apache.rocketmq.client.producer.TransactionSendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -80,18 +80,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         SECKILL_SCRIPT = new DefaultRedisScript<>();
         SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
         SECKILL_SCRIPT.setResultType(Long.class);
-    }
-
-    /**
-     * 补偿脚本：MQ 发送失败时回滚 Lua 预扣（库存 +1、SREM 资格），
-     * 两条命令在一个脚本里原子完成，避免"库存已回补但资格还在"的半回滚状态
-     */
-    private static final DefaultRedisScript<Long> SECKILL_ROLLBACK_SCRIPT;
-
-    static {
-        SECKILL_ROLLBACK_SCRIPT = new DefaultRedisScript<>();
-        SECKILL_ROLLBACK_SCRIPT.setLocation(new ClassPathResource("seckill_rollback.lua"));
-        SECKILL_ROLLBACK_SCRIPT.setResultType(Long.class);
     }
 
     @Resource
@@ -305,36 +293,26 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     public Result seckillProduct(Long productId) {
         Long userId = UserHolder.getUser().getId();
         long orderId = redisIdWorker.nextId("order");
-        // 1.执行lua脚本：资格判断 + 预扣库存 + 写资格 Set（原子，不含消息投递）
-        Long result = stringRedisTemplate.execute(
-                SECKILL_SCRIPT,
-                Collections.emptyList(),
-                productId.toString(), userId.toString()
-        );
-        int r = result.intValue();
-        // 2.判断结果是否为0
-        if (r != 0) {
-            // 2.1.不为0，代表没有购买资格
-            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
-        }
-        // 3.同步发送 RocketMQ（生产者自动重试 2 次；SEND_OK = Broker 已写入，此后异步落库）
+        // 1.事务消息（任务四）：先发半消息，Lua 预扣作为"本地事务"在半消息之后同步执行。
+        //   时序：半消息 → Lua 预扣 → COMMIT/ROLLBACK；COMMIT 确认丢失由回查按资格 Set 兜底。
+        //   相比任务一"Lua 先执行 + 同步发送 + 失败补偿"：预扣成功但消息丢失的窗口从结构上消除，
+        //   补偿 Lua 整体退役（seckill_rollback.lua 已删除）。
+        int[] luaResult = new int[1];   // holder：监听器把 Lua 返回码带回请求线程
         try {
-            SendResult sendResult = rocketMQTemplate.syncSend(SeckillMessage.TOPIC,
-                    new SeckillMessage(userId, productId, orderId));
-            // 非 SEND_OK（如 FLUSH_DISK_TIMEOUT）同样按失败处理：补偿回滚；
-            // 若消息实际已被投递，消费端 count 校验兜底幂等，不会重复建单
-            if (!SendStatus.SEND_OK.equals(sendResult.getSendStatus())) {
-                throw new IllegalStateException("MQ 发送状态异常: " + sendResult.getSendStatus());
+            TransactionSendResult result = rocketMQTemplate.sendMessageInTransaction(
+                    SeckillMessage.TOPIC,
+                    MessageBuilder.withPayload(new SeckillMessage(userId, productId, orderId)).build(),
+                    luaResult);
+            // 2.按"本地事务"执行结果给用户响应（半消息写入失败会直接抛异常进入 catch）
+            if (result.getLocalTransactionState() != LocalTransactionState.COMMIT_MESSAGE) {
+                // ROLLBACK（库存不足/重复下单）或 UNKNOW（回查未决，保守返回失败）
+                return Result.fail(luaResult[0] == 2 ? "不能重复下单" : "库存不足");
             }
         } catch (Exception e) {
-            log.error("MQ 发送失败，执行 Lua 预扣补偿回滚 productId={} userId={} orderId={}",
-                    productId, userId, orderId, e);
-            // 补偿原子回滚：库存 +1 与撤销资格一起完成
-            stringRedisTemplate.execute(SECKILL_ROLLBACK_SCRIPT, Collections.emptyList(),
-                    productId.toString(), userId.toString());
+            log.error("事务消息发送失败 productId={} userId={} orderId={}", productId, userId, orderId, e);
             return Result.fail("系统繁忙，请稍后重试");
         }
-        // 4.返回订单id
+        // 3.返回订单id
         return Result.ok(orderId);
     }
 }
