@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # Spring Boot Actuator：/actuator/prometheus（micrometer-registry-prometheus）
+  # host.docker.internal = 宿主机（Docker Desktop 自带解析；Linux 加 host-gateway）
+  # 8082 为可选第二实例（P6 双实例部署时启用），未运行时该 target 显示 down，不影响 8081
+  - job_name: flashbuy
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          application: flashbuy-8081
+      - targets: ['host.docker.internal:8082']
+        labels:
+          application: flashbuy-8082

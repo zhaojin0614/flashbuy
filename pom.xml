@@ -46,6 +46,15 @@
             <artifactId>rocketmq-spring-boot-starter</artifactId>
             <version>2.3.1</version>
         </dependency>
+        <!-- 可观测性（P5）：Actuator 暴露健康与指标端点，Micrometer 以 Prometheus 文本格式输出 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.mysql</groupId>

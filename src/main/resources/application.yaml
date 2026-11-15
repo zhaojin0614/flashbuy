@@ -48,6 +48,16 @@ rocketmq:
   producer:
     # 生产者组：同组实例发送语义一致；事务消息回查也按组寻址
     group: flashbuy-order-producer
+management:
+  endpoints:
+    web:
+      exposure:
+        # 暴露 Prometheus 抓取端点与健康检查（P5 监控）
+        include: health,info,prometheus
+  metrics:
+    tags:
+      # 多实例区分：每实例 application 标签不同（启动参数 --management.metrics.tags.application=flashbuy-8082）
+      application: ${spring.application.name}
 order:
   # 订单超时关单延迟级别（broker.conf 定制的 messageDelayLevel 第 14 档 = 15m）
   # 测试可用 --order.close-delay-level=1（1s）快速验证

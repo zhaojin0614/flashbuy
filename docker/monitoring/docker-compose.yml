@@ -1,0 +1,24 @@
+services:
+  prometheus:
+    image: docker.m.daocloud.io/prom/prometheus:v2.53.0
+    container_name: flashbuy-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # Docker Desktop 自带 host.docker.internal 解析，Linux 需补 host-gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: docker.m.daocloud.io/grafana/grafana:11.1.0
+    container_name: flashbuy-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      # 演示环境固定账密；生产用 secret 注入并修改默认口令
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro

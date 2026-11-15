@@ -94,6 +94,18 @@ cd nginx-1.18.0 && ./nginx.exe -s reload
 分布式验证结论：同一用户并发双发（分别命中两实例）恰好落一单，生产与消费在
 两实例间对称分摊——见《闪购改造记录》第 42 章。
 
+### 监控（P5）
+
+```bash
+docker compose -f docker/monitoring/docker-compose.yml up -d
+# Grafana 面板已自动装配（Prometheus 数据源 + FlashBuy 看板）：http://localhost:3000（admin/admin）
+```
+
+覆盖 HTTP 请求速率/P95 延迟/5xx 错误率、JVM 内存、HikariCP 连接池、秒杀接口速率；
+Prometheus 抓取 8081（可选 8082 第二实例）的 `/actuator/prometheus` 端点。
+
+![Grafana 监控面板](docs/img/grafana-dashboard.png)
+
 ## 接口概览
 
 | 模块 | 路径 | 说明 |
