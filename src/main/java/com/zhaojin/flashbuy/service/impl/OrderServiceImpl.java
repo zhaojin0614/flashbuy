@@ -155,6 +155,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                 // 关键：走代理调用，@Transactional 才会生效，不能写 this.createOrder(...)
                 boolean created = proxy.createOrder(order);
                 if (created) {
+                    log.info("订单消费落库成功 orderId={} productId={} userId={}",
+                            order.getId(), order.getProductId(), order.getUserId());
                     // 落库成功 → 发延迟关单消息（超时未支付自动取消）。
                     // 发送失败只记日志不上抛：订单已存在，重试 consume 会走"已落库"分支
                     // 而不再发关单消息，上抛反而让重试链路把关单消息弄丢——残留未关单

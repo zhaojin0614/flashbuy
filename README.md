@@ -79,6 +79,21 @@ cd nginx-1.18.0 && ./nginx.exe
 #    登录验证码输出在应用控制台日志（演示环境）
 ```
 
+### 多实例部署（可选，P6 分布式实证）
+
+```bash
+# 两个实例 + nginx 轮询分摊（Redis/RocketMQ 本就共享，业务代码零改动）
+java -jar target/flashbuy-*.jar --server.port=8081
+java -jar target/flashbuy-*.jar --server.port=8082
+# nginx.conf：取消 upstream 中 8082 行的注释（只跑单实例时保持注释，避免死节点重试）
+cd nginx-1.18.0 && ./nginx.exe -s reload
+```
+
+响应头 `X-Upstream` 标识实际服务的节点；MQ 集群消费（CLUSTERING）自动在两实例间
+分摊消息，一人一单/限流/幂等依赖共享 Redis 与 DB，跨实例天然生效。
+分布式验证结论：同一用户并发双发（分别命中两实例）恰好落一单，生产与消费在
+两实例间对称分摊——见《闪购改造记录》第 42 章。
+
 ## 接口概览
 
 | 模块 | 路径 | 说明 |
