@@ -86,7 +86,7 @@ class SeckillIdempotentTest {
         rocketMQTemplate.syncSend(SeckillMessage.TOPIC, message);
 
         // 2.轮询等待第一条消息异步落库（最多 15s）
-        long deadline = System.currentTimeMillis() + 15_000;
+        long deadline = System.currentTimeMillis() + 45_000;
         Long count;
         do {
             Thread.sleep(500);

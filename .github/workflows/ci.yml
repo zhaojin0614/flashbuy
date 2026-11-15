@@ -61,6 +61,18 @@ jobs:
       - name: Run integration test (SeckillIdempotentTest)
         run: mvn -B test -Dtest=SeckillIdempotentTest
 
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo '=== surefire reports ==='
+          cat target/surefire-reports/*.txt 2>/dev/null || true
+          echo '=== app test logs (tail) ==='
+          find target -name '*.log' -exec tail -100 {} \; 2>/dev/null || true
+          echo '=== rocketmq broker log ==='
+          docker logs rmqbroker 2>&1 | tail -60 || true
+          echo '=== rocketmq cluster/consumer state ==='
+          docker exec rmqbroker sh mqadmin clusterList -n localhost:9876 2>&1 | head -5 || true
+
       - name: Package
         run: mvn -B -DskipTests package
 
