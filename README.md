@@ -133,6 +133,7 @@ Prometheus 抓取 8081（可选 8082 第二实例）的 `/actuator/prometheus` �
 - `3f7a6d4` PEL 滞留消息补丁 + RocketMQ 4.9 Docker 环境（3f7a6d4/7e34de4）
 
 完整逐条原理记录（含验证数据与面试问法）见飞书《闪购改造记录（边改造边学习）》。
+**简历话术定稿（项目总结 + 全部实测数字，可复现）见 [docs/resume.md](docs/resume.md)。**
 
 ## Roadmap
 
