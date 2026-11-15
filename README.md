@@ -1,4 +1,5 @@
 # 闪购 FlashBuy ⚡
+[![CI](https://github.com/zhaojin0614/flashbuy/actions/workflows/ci.yml/badge.svg)](https://github.com/zhaojin0614/flashbuy/actions/workflows/ci.yml)
 
 > 潮玩 / 演出票限量抢购平台 —— 一个以「限量抢购」为核心业务的高并发实战项目。
 > 源自对黑马点评课程的系统性学习，并在其之上完成了技术栈升级、架构重构与品牌重塑。
