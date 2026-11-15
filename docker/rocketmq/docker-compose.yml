@@ -2,7 +2,7 @@
 # 网络正常时可换回 apache/rocketmq:4.9.7。
 services:
   namesrv:
-    image: docker.m.daocloud.io/apache/rocketmq:4.9.7
+    image: docker.m.daocloud.io/apache/rocketmq:5.3.0
     container_name: flashbuy-rmqnamesrv
     ports:
       - "9876:9876"
@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
 
   broker:
-    image: docker.m.daocloud.io/apache/rocketmq:4.9.7
+    image: docker.m.daocloud.io/apache/rocketmq:5.3.0
     container_name: flashbuy-rmqbroker
     ports:
       - "10909:10909"

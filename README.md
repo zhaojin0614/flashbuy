@@ -48,7 +48,7 @@ GEO 附近商户 · BitMap 签到与连续统计 · HyperLogLog UV 统计 ·
 | 语言 / 运行时 | JDK 21 |
 | 框架 | Spring Boot 3.5.16 |
 | ORM | MyBatis-Plus 3.5.18.1 |
-| 缓存 / MQ | Redis 7（Lettuce）、Redisson 3.50、RocketMQ 4.9（Docker）消息队列 |
+| 缓存 / MQ | Redis 7（Lettuce）、Redisson 3.50、RocketMQ 5.3（Docker）消息队列 |
 | 数据库 | MySQL 8.0 |
 | 前端 | 原生 JS + 手写 CSS（无框架依赖），nginx 8080 反代 |
 | 版本控制 | Git（每次改造独立提交，可追溯） |
