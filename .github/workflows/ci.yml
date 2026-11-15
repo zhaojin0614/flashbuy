@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: 1234        # 与 application.yaml 本地默认值一致（local 密钥文件不入库）
+          MYSQL_DATABASE: flashbuy
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s --health-timeout=3s --health-retries=30
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Load seed SQL
+        run: >
+          mysql -h 127.0.0.1 -uroot -p1234 flashbuy
+          --default-character-set=utf8mb4 < src/main/resources/db/flashbuy.sql
+
+      - name: Start RocketMQ (namesrv + broker)
+        run: |
+          docker run -d --name rmqnamesrv -p 9876:9876 apache/rocketmq:5.3.0 sh mqnamesrv
+          # 自动建 Topic 开关写在临时 broker.conf（5.3.0 默认不开启）
+          printf 'autoCreateTopicEnable=true\n' > broker.conf
+          docker run -d --name rmqbroker --link rmqnamesrv \
+            -v "$PWD/broker.conf:/home/rocketmq/broker.conf:ro" \
+            apache/rocketmq:5.3.0 sh mqbroker -n rmqnamesrv:9876 -c /home/rocketmq/broker.conf
+          # 等待 broker 注册到 NameServer
+          for i in $(seq 1 30); do
+            if docker exec rmqbroker sh mqadmin clusterList -n rmqnamesrv:9876 2>/dev/null | grep -q broker-a; then
+              echo "broker ready"; break
+            fi
+            sleep 2
+          done
+
+      - name: Run integration test (SeckillIdempotentTest)
+        run: mvn -B test -Dtest=SeckillIdempotentTest
+
+      - name: Package
+        run: mvn -B -DskipTests package
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashbuy-jar
+          path: target/flashbuy-*.jar
+          retention-days: 7
