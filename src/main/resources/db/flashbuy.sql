@@ -1269,13 +1269,14 @@ CREATE TABLE `tb_order`  (
   `product_id` bigint(20) UNSIGNED NOT NULL COMMENT '购买的商品id',
   `pay_type` tinyint(1) UNSIGNED NOT NULL DEFAULT 1 COMMENT '支付方式 1：余额支付；2：支付宝；3：微信',
   `status` tinyint(1) UNSIGNED NOT NULL DEFAULT 1 COMMENT '订单状态，1：未支付；2：已支付；3：已核销；4：已取消；5：退款中；6：已退款',
+  `active_flag` tinyint(1) GENERATED ALWAYS AS (CASE WHEN `status` IN (1, 2, 3, 5) THEN 1 ELSE NULL END) STORED COMMENT '有效订单标记：1占用复购名额，NULL已结束',
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
   `pay_time` timestamp NULL DEFAULT NULL COMMENT '支付时间',
   `use_time` timestamp NULL DEFAULT NULL COMMENT '核销时间',
   `refund_time` timestamp NULL DEFAULT NULL COMMENT '退款时间',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_order_user_product`(`user_id`, `product_id`) USING BTREE
+  UNIQUE INDEX `uk_order_user_product_active`(`user_id`, `product_id`, `active_flag`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
 -- ----------------------------

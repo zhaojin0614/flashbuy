@@ -36,7 +36,7 @@ public class SeckillOrderListener implements RocketMQListener<SeckillMessage> {
         order.setId(message.getOrderId());
         order.setUserId(message.getUserId());
         order.setProductId(message.getProductId());
-        // 抛出异常 => RocketMQ 自动重试；重试时 createOrder 的 count 校验兜底幂等
+        // 抛出异常 => RocketMQ 自动重试；createOrder 的 orderId/active_flag 校验与唯一索引兜底幂等
         orderService.consume(order);
     }
 }

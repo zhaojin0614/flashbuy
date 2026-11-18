@@ -25,7 +25,8 @@
    │                                                    状态机 CAS 1→4 + 回补库存/撤销资格
 ```
 
-- 一人一单三道防线：Lua 的 Set 判断 → Redisson 锁 → 数据库 count 校验
+- 一人一单三道防线：Lua 的 Set 判断 → Redisson 锁 → 数据库 active_flag 有效订单校验 + 唯一索引
+- 取消后可复购：订单状态 4/6 的 `active_flag` 自动为 NULL，历史订单保留；有效订单（1/2/3/5）最多一条
 - 事务保障：锁包住整个事务调用，`proxy.createOrder` 返回即事务已提交后才释放锁
 - 消息可靠性：事务消息（半消息 → Lua 预扣 → COMMIT/回查）+ 消费自动重试 + 死信 + 幂等三层
 - 压测对比（同机双组）：消费吞吐翻倍（125→250 单/s）、DB 与入口洪峰解耦，详见 [docs/seckill-loadtest.md](docs/seckill-loadtest.md)
@@ -60,6 +61,9 @@ GEO 附近商户 · BitMap 签到与连续统计 · HyperLogLog UV 统计 ·
 # 1. 数据库：执行 src/main/resources/db/flashbuy.sql
 mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS flashbuy DEFAULT CHARACTER SET utf8mb4;"
 mysql -uroot -p flashbuy < src/main/resources/db/flashbuy.sql
+
+# 已有旧库升级（新增“取消后复购”的 active_flag 唯一索引）
+mysql -uroot -p flashbuy < src/main/resources/db/repair/2026-11-18_order_active_unique.sql
 
 # 2. Redis：localhost:6379（application.yaml 可改）
 

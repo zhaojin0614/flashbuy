@@ -25,6 +25,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -115,9 +116,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
      * 消除了"释放锁后、事务尚未提交"期间其他线程读到旧数据的并发缝隙。
      *
      * 消费幂等三层：① SETNX 消费中标记（同一 orderId 的并发/重投消息让出）
-     * ② createOrder 的 DB count 校验 ③ tb_order 唯一索引 uk_order_user_product 兜底。
+     * ② createOrder 的订单号存在性 + active_flag 有效订单 count 校验
+     * ③ tb_order 唯一索引 uk_order_user_product_active 兜底。
      *
-     * 标记语义是"正在处理"（30s TTL 自愈）而非"已消费"：count==0 且标记在时，
+     * 标记语义是"正在处理"（30s TTL 自愈）而非"已消费"：订单不存在且标记在时，
      * 无法区分"上一条正在处理"与"上一条崩在落库前"——所以非本人持有的标记绝不删除，
      * 只抛异常等 MQ 重试（退避 10s/30s 后标记已过期，重新处理）。
      * 锁获取失败同样抛异常 => RECONSUME_LATER，最多 16 次后进死信。
@@ -131,9 +133,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                 .setIfAbsent(consumingKey, "1", CONSUMING_TTL_SECONDS, TimeUnit.SECONDS));
         if (!acquired) {
             // SETNX 失败 = 同一消息的并发投递或重投，上一条正在处理（或已处理完）
-            long count = query().eq("user_id", userId).eq("product_id", order.getProductId()).count();
-            if (count > 0) {
-                // 上一条已提交落库——幂等 ACK，不再处理
+            // 按 orderId 判断是否已落库（不能只看 active_flag：已取消订单的消息重投同样要 ACK）
+            Order existing = getById(order.getId());
+            if (existing != null) {
                 log.info("重复消息，订单已存在，幂等跳过 orderId={}", order.getId());
                 return;
             }
@@ -168,6 +170,13 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                 // 释放锁
                 redisLock.unlock();
             }
+        } catch (DuplicateKeyException e) {
+            // 唯一索引拦截重复订单：事务已回滚，等价于“另一个请求已创建有效订单”，
+            // 正常 ACK；不能让它进入 MQ 无限重试，也不能吞掉其他数据库异常。
+            log.info("唯一索引拦截重复订单，幂等 ACK orderId={} userId={} productId={}",
+                    order.getId(), userId, order.getProductId());
+            stringRedisTemplate.delete(consumingKey);
+            return;
         } catch (RuntimeException e) {
             // 只清理自己持有的标记，否则 MQ 重试的消息会被它挡在门外（等于丢了重试机会）
             stringRedisTemplate.delete(consumingKey);
@@ -204,12 +213,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         Long userId = order.getUserId();
         Long productId = order.getProductId();
 
-        // 5.一人一单第三道防线：数据库 count 校验（第一道 Lua 的 Set 判断、第二道 Redisson 锁）
-        long count = query().eq("user_id", userId).eq("product_id", productId).count();
-        // 判断是否存在
-        if (count > 0) {
-            // 用户已经购买过了
-            log.error("不允许重复下单！");
+        // 5.1 同一 orderId 的消息重投：订单已存在（含已取消）直接 ACK，避免重复扣库存
+        if (getById(order.getId()) != null) {
+            log.info("订单已存在，幂等跳过 orderId={}", order.getId());
+            return false;
+        }
+        // 5.2 一人一单第三道防线：只统计“有效订单”，已取消/已退款不占复购名额
+        long activeCount = query().eq("user_id", userId).eq("product_id", productId)
+                .eq("active_flag", 1).count();
+        if (activeCount > 0) {
+            log.info("用户已有有效订单，拒绝重复下单 userId={} productId={}", userId, productId);
             return false;
         }
 
@@ -265,8 +278,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         // 1.抢购资格：Lua 阶段同步写入的 Redis Set（资格判断、预扣库存、写资格 Set 三合一）
         boolean qualified = Boolean.TRUE.equals(stringRedisTemplate.opsForSet()
                 .isMember(RedisConstants.SECKILL_ORDER_KEY + productId, userId.toString()));
-        // 2.订单是否已异步落库
-        long ordered = query().eq("user_id", userId).eq("product_id", productId).count();
+        // 2.是否存在有效订单（已取消/已退款不占复购名额，用户可以重新抢）
+        long ordered = query().eq("user_id", userId).eq("product_id", productId)
+                .eq("active_flag", 1).count();
         Map<String, Object> state = new HashMap<>();
         state.put("qualified", qualified);
         state.put("ordered", ordered > 0);
