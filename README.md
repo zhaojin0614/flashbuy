@@ -109,6 +109,9 @@ scripts\start-flashbuy.cmd
 # 后端交给 IDEA 调试，脚本只启动 Redis/RocketMQ/nginx
 .\scripts\start-flashbuy.ps1 -SkipBackend
 
+# 等价的双击入口：不构建、不启动后端，适合 IDEA 启动后端
+scripts\start-flashbuy-idea.cmd
+
 # 不自动启动 Docker Desktop
 .\scripts\start-flashbuy.ps1 -SkipDockerDesktopStart
 ```
