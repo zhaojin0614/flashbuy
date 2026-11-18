@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -273,6 +274,49 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     }
 
     @Override
+    public Result payOrder(Long orderId, Integer payType) {
+        Long userId = UserHolder.getUser().getId();
+        if (orderId == null) {
+            return Result.fail("订单id不能为空");
+        }
+        int type = payType == null ? 1 : payType;
+        if (type < 1 || type > 3) {
+            return Result.fail("不支持的支付方式");
+        }
+        Order order = getById(orderId);
+        if (order == null) {
+            return Result.fail("订单不存在");
+        }
+        if (!userId.equals(order.getUserId())) {
+            return Result.fail("无权操作该订单");
+        }
+        // 已支付：幂等返回成功（重复点击支付按钮/网络重试）
+        if (order.getStatus() != null && order.getStatus() == 2) {
+            return Result.ok();
+        }
+        if (order.getStatus() == null || order.getStatus() != 1) {
+            return Result.fail("订单已取消或状态已变化，无法支付");
+        }
+        // 状态机 CAS：只有待支付订单能被支付；与关单 CAS 竞争时最多一方成功
+        boolean paid = update()
+                .set("status", 2)
+                .set("pay_time", LocalDateTime.now())
+                .set("pay_type", type)
+                .eq("id", orderId)
+                .eq("user_id", userId)
+                .eq("status", 1)
+                .update();
+        if (!paid) {
+            Order latest = getById(orderId);
+            if (latest != null && latest.getStatus() != null && latest.getStatus() == 2) {
+                return Result.ok();
+            }
+            return Result.fail("订单已取消或状态已变化，无法支付");
+        }
+        return Result.ok();
+    }
+
+    @Override
     public Result queryMyOrders() {
         Long userId = UserHolder.getUser().getId();
         // 1.查询我的订单（新订单在前）
@@ -291,7 +335,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                         .collect(Collectors.toMap(Merchant::getId, m -> m));
         List<Map<String, Object>> result = orders.stream().map(o -> {
             Map<String, Object> vo = new HashMap<>();
-            vo.put("orderId", o.getId());
+            // orderId 超过 JS 安全整数范围，转字符串避免前端精度丢失后支付错单
+            vo.put("orderId", o.getId().toString());
             vo.put("productId", o.getProductId());
             Product p = productMap.get(o.getProductId());
             if (p != null) {

@@ -40,6 +40,12 @@ public interface IOrderService extends IService<Order> {
     Result queryMyOrders();
 
     /**
+     * 演示支付：把订单从待支付 CAS 到已支付。
+     * 支付成功后，延迟关单消息到达时状态机 CAS 会跳过，不再回补库存/撤销资格。
+     */
+    Result payOrder(Long orderId, Integer payType);
+
+    /**
      * 延迟关单消费入口：状态机 CAS（status 1→4）+ 回补库存、撤销资格。
      * 状态机保证幂等：已支付/已关闭/不存在的订单直接跳过。
      */

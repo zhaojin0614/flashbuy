@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -40,5 +41,14 @@ public class OrderController {
     @GetMapping("of/me")
     public Result queryMyOrders() {
         return orderService.queryMyOrders();
+    }
+
+    /**
+     * 演示支付：待支付订单 CAS 1→2；支付后延迟关单会跳过。
+     */
+    @PostMapping("pay/{id}")
+    public Result payOrder(@PathVariable("id") Long orderId,
+                           @RequestParam(value = "payType", defaultValue = "1") Integer payType) {
+        return orderService.payOrder(orderId, payType);
     }
 }

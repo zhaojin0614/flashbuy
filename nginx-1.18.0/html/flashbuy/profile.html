@@ -117,10 +117,22 @@
             <div style="text-align:right">
               <div class="price" style="font-size:16px">¥${((o.payValue || 0) / 100).toFixed(2)}</div>
               <div class="sub">订单 ${o.orderId}${ORDER_STATUS[o.status] ? ' · ' + ORDER_STATUS[o.status] : ''}</div>
+              ${o.status === 1 ? `<button onclick="payOrder('${o.orderId}')"
+                style="margin-top:6px;padding:5px 12px;border:none;border-radius:8px;background:var(--primary);color:#fff;cursor:pointer">去支付</button>` : ''}
             </div>
           </div>`).join('');
       } catch (e) {
         document.getElementById('orderList').innerHTML = `<div class="sub">${e}</div>`;
+      }
+    }
+    async function payOrder(orderId) {
+      if (!confirm('确认支付该订单？')) return;
+      try {
+        await axios.post('/order/pay/' + orderId);
+        toast('支付成功', 'success');
+        loadOrders();
+      } catch (e) {
+        toast(typeof e === 'string' ? e : '支付失败', 'error');
       }
     }
     async function loadMyPosts() {

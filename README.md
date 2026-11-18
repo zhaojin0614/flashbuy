@@ -115,6 +115,7 @@ Prometheus 抓取 8081（可选 8082 第二实例）的 `/actuator/prometheus` �
 | 商户 | `/merchant/{id}` `/merchant/of/type` `/merchant/of/name` | 详情、分类检索、名称检索 |
 | 商品 | `/product/list/{merchantId}` `/product/seckill` | 商品列表、上架限量商品 |
 | 抢购 | `POST /order/seckill/{productId}` | Lua 原子预扣 + 异步落库 |
+| 支付 | `POST /order/pay/{orderId}` | 演示支付：状态 CAS 1→2，超时关单会跳过 |
 | 晒单 | `/post/hot` `/post/{id}` `/post/like/{id}` | 热门晒单、点赞 |
 
 ## 改造记录（关键里程碑）
