@@ -84,6 +84,43 @@ cd nginx-1.18.0 && ./nginx.exe
 #    登录验证码输出在应用控制台日志（演示环境）
 ```
 
+### 一键启动脚本（Windows）
+
+前置条件：**MySQL 已启动**。脚本只检查 3306，不会启动 MySQL；Redis、RocketMQ、后端和 nginx 由脚本拉起。
+
+双击：
+
+```text
+scripts\start-flashbuy.cmd
+```
+
+或在 PowerShell 中：
+
+```powershell
+.\scripts\start-flashbuy.ps1
+```
+
+可选参数：
+
+```powershell
+# 跳过 Maven 构建，直接启动已有 jar
+.\scripts\start-flashbuy.ps1 -SkipBuild
+
+# 后端交给 IDEA 调试，脚本只启动 Redis/RocketMQ/nginx
+.\scripts\start-flashbuy.ps1 -SkipBackend
+
+# 不自动启动 Docker Desktop
+.\scripts\start-flashbuy.ps1 -SkipDockerDesktopStart
+```
+
+启动日志与 PID 统一放在 `target/startup/`；停止：
+
+```text
+scripts\stop-flashbuy.cmd
+```
+
+停止脚本不会停止 MySQL。
+
 ### 多实例部署（可选，P6 分布式实证）
 
 ```bash
