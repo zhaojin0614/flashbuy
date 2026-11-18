@@ -65,9 +65,9 @@ management:
       # 多实例区分：每实例 application 标签不同（启动参数 --management.metrics.tags.application=flashbuy-8082）
       application: ${spring.application.name}
 order:
-  # 订单超时关单延迟级别（broker.conf 定制的 messageDelayLevel 第 14 档 = 15m）
+  # 订单超时关单延迟级别（broker.conf 定制的 messageDelayLevel 第 15 档 = 15m）
   # 测试可用 --order.close-delay-level=1（1s）快速验证
-  close-delay-level: 14
+  close-delay-level: 15
   seckill-ratelimit:
     # 秒杀入口令牌桶限流开关（压测裸链路时可关闭）
     enabled: true

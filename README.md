@@ -130,7 +130,10 @@ Prometheus 抓取 8081（可选 8082 第二实例）的 `/actuator/prometheus` �
 - `7f468e0` 包名升级 `com.zhaojin.flashbuy` 并清除原作者标识
 - `c577a8b` 敏感配置支持环境变量覆盖
 - `9529ded` 缓存深化：Caffeine 两级缓存 + Pub/Sub 跨实例失效 + 压测报告（c494e28/841abac/9529ded）
-- `3f7a6d4` PEL 滞留消息补丁 + RocketMQ 4.9 Docker 环境（3f7a6d4/7e34de4）
+- `3f7a6d4` PEL 滞留消息补丁 + RocketMQ Docker 环境（3f7a6d4/7e34de4）
+- `0f4283e` / `4fa6d45` RocketMQ 异步下单 + 事务消息；`2a0ffc2` 15 分钟延迟关单
+- `84f366d` 令牌桶双重限流；`5e80acc` 秒杀压测报告
+- `15c7e92` 多实例分布式实证；`ce72ce6` 监控；`8724f85` CI；`f13e751` 虚拟线程；`99efb51` 慢 SQL
 
 完整逐条原理记录（含验证数据与面试问法）见飞书《闪购改造记录（边改造边学习）》。
 **简历话术定稿（项目总结 + 全部实测数字，可复现）见 [docs/resume.md](docs/resume.md)。**
@@ -139,6 +142,7 @@ Prometheus 抓取 8081（可选 8082 第二实例）的 `/actuator/prometheus` �
 
 - [x] P1 认证与安全：JWT 双 Token + 登录限流（Redis + Lua 滑动窗口）
 - [x] P2 缓存深化：Caffeine + Redis 两级缓存、Pub/Sub 失效、延迟双删、压测报告
-- [ ] P3 秒杀增强：RocketMQ 替代 Redis Stream、事务消息 / 本地消息表、压测报告
-- [ ] P4 搜索：Elasticsearch 全文检索 + 数据同步
-- [ ] P5 可观测：Prometheus + Grafana 监控、CI 流水线
+- [x] P3 秒杀增强：RocketMQ 事务消息、消费幂等、15 分钟延迟关单、令牌桶限流、压测报告
+- [ ] P4 搜索：Elasticsearch 全文检索 + 数据同步（暂缓：LIKE/FULLTEXT 已验证，当前量级不需要）
+- [x] P5 可观测：Actuator + Prometheus + Grafana + GitHub Actions CI
+- [x] P6 差异化：双实例分布式实证、JDK 21 虚拟线程

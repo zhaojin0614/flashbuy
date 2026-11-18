@@ -89,8 +89,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     /** 消费中标记 TTL：崩溃后 30s 自愈，需大于单次消费耗时、小于重试退避间隔 */
     private static final long CONSUMING_TTL_SECONDS = 30;
 
-    /** 订单超时关单延迟级别（对应 broker.conf 定制的 messageDelayLevel，14 = 15m） */
-    @Value("${order.close-delay-level:14}")
+    /** 订单超时关单延迟级别（对应 broker.conf 定制的 messageDelayLevel，15 = 15m） */
+    @Value("${order.close-delay-level:15}")
     private int closeDelayLevel;
 
     /** 入口令牌桶限流开关（压测时关闭以测裸链路） */
@@ -177,7 +177,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     }
 
     /**
-     * 发送延迟关单消息：级别由 order.close-delay-level 配置（broker.conf 定制 14=15m），
+     * 发送延迟关单消息：级别由 order.close-delay-level 配置（broker.conf 定制 15=15m），
      * 测试可用 --order.close-delay-level=1（1s）快速验证。
      */
     private void sendOrderCloseMessage(Order order) {
